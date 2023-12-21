@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 
@@ -103,7 +105,7 @@ type Client interface {
 }
 
 // todo add logger
-func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomClient, error) {
+func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics, logger log.Logger) (*BloomClient, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
@@ -116,6 +118,7 @@ func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage
 		periodicConfigs:       periodicConfigs,
 		storageConfig:         storageConfig,
 		periodicObjectClients: periodicObjectClients,
+		logger:                logger,
 	}, nil
 }
 
@@ -123,6 +126,7 @@ type BloomClient struct {
 	periodicConfigs       []config.PeriodConfig
 	storageConfig         storage.Config
 	periodicObjectClients map[config.DayTime]client.ObjectClient
+	logger                log.Logger
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
@@ -146,6 +150,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 					metaRef.StartTimestamp.Before(params.StartTimestamp) || metaRef.EndTimestamp.After(params.EndTimestamp) {
 					continue
 				}
+				level.Debug(b.logger).Log("msg", "download meta file", "ref", metaRef.FilePath)
 				meta, err := b.downloadMeta(ctx, metaRef, periodClient)
 				if err != nil {
 					return nil, err

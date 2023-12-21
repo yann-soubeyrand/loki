@@ -108,7 +108,7 @@ func New(
 	}
 
 	// Configure BloomClient for meta.json management
-	bloomClient, err := bloomshipper.NewBloomClient(schemaConfig.Configs, storageCfg, clientMetrics)
+	bloomClient, err := bloomshipper.NewBloomClient(schemaConfig.Configs, storageCfg, clientMetrics, logger)
 	if err != nil {
 		return nil, err
 	}

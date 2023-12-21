@@ -191,7 +191,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, o
 	g.queue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, time.Minute, &fixedQueueLimits{100}, g.queueMetrics)
 	g.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(g.queueMetrics.Cleanup)
 
-	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm)
+	client, err := bloomshipper.NewBloomClient(schemaCfg.Configs, storageCfg, cm, logger)
 	if err != nil {
 		return nil, err
 	}

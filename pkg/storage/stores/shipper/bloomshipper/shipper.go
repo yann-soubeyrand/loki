@@ -114,6 +114,7 @@ func getFirstLast[T any](s []T) (T, T) {
 
 func (s *Shipper) getActiveBlockRefs(ctx context.Context, tenantID string, from, through model.Time, fingerprints []uint64) ([]BlockRef, error) {
 	minFingerprint, maxFingerprint := getFirstLast(fingerprints)
+	level.Debug(s.logger).Log("msg", "getting block refs", "tenant", tenantID, "fingerprints", len(fingerprints), "min", minFingerprint, "max", maxFingerprint)
 	metas, err := s.client.GetMetas(ctx, MetaSearchParams{
 		TenantID:       tenantID,
 		MinFingerprint: model.Fingerprint(minFingerprint),

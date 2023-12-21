@@ -14,6 +14,7 @@ import (
 	"time"
 
 	awsio "github.com/aws/smithy-go/io"
+	"github.com/go-kit/log"
 	"github.com/google/uuid"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -505,7 +506,7 @@ func createClient(t *testing.T) *BloomClient {
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	bloomClient, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
+	bloomClient, err := NewBloomClient(periodicConfigs, storageConfig, metrics, log.NewNopLogger())
 	require.NoError(t, err)
 	return bloomClient
 }
