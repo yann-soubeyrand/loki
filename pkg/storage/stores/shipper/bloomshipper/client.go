@@ -170,6 +170,7 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 			}
 		}
 	}
+	level.Debug(b.logger).Log("msg", "downloaded metas", "count", len(metas))
 	return metas, nil
 }
 
