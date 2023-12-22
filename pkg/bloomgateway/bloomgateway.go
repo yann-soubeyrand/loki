@@ -45,6 +45,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -278,12 +279,49 @@ func (g *Gateway) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
+func join[T any](elems []T, sep string, f func(T) string) string {
+	maxInt := int(^uint(0) >> 1)
+	switch len(elems) {
+	case 0:
+		return ""
+	case 1:
+		return f(elems[0])
+	}
+
+	var n int
+	if len(sep) > 0 {
+		if len(sep) >= maxInt/(len(elems)-1) {
+			panic("strings: Join output length overflow")
+		}
+		n += len(sep) * (len(elems) - 1)
+	}
+	for _, elem := range elems {
+		if len(f(elem)) > maxInt-n {
+			panic("strings: Join output length overflow")
+		}
+		n += len(f(elem))
+	}
+
+	var b strings.Builder
+	b.Grow(n)
+	b.WriteString(f(elems[0]))
+	for _, s := range elems[1:] {
+		b.WriteString(sep)
+		b.WriteString(f(s))
+	}
+	return b.String()
+}
+
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+	fps := join(req.Refs, ",", func(ref *logproto.GroupedChunkRefs) string {
+		return fmt.Sprintf("%d", ref.Fingerprint)
+	})
+	level.Info(g.logger).Log("msg", "FilterChunkRefs", "tenant", tenantID, "fingerprints", fps, "from", req.From, "through", req.Through)
 
 	// Shortcut if request does not contain filters
 	if len(req.Filters) == 0 {
@@ -323,7 +361,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		case res := <-resCh:
 			responses = append(responses, res)
 			// log line is helpful for debugging tests
-			// level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", uint64(res.Fp), "chunks", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
+			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp", uint64(res.Fp), "chunks", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
 			if len(responses) == requestCount {
 				for _, o := range responses {

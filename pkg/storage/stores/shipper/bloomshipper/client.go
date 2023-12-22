@@ -144,6 +144,11 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 
 	var metas []Meta
 	for periodFrom, tables := range tablesByPeriod {
+		level.Debug(b.logger).Log(
+			"msg", "loading metas for period",
+			"period", periodFrom,
+			"tables", strings.Join(tables, ","),
+		)
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
