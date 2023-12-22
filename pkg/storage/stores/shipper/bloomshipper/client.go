@@ -74,6 +74,10 @@ type MetaSearchParams struct {
 	StartTimestamp, EndTimestamp   model.Time
 }
 
+func (m MetaSearchParams) String() string {
+	return fmt.Sprintf("%s:%d-%d:%d-%d", m.TenantID, m.MinFingerprint, m.MaxFingerprint, m.StartTimestamp, m.EndTimestamp)
+}
+
 type MetaClient interface {
 	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
 	// and intersect time period from StartTimestamp to EndTimestamp.
@@ -104,7 +108,6 @@ type Client interface {
 	Stop()
 }
 
-// todo add logger
 func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics, logger log.Logger) (*BloomClient, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
@@ -130,6 +133,13 @@ type BloomClient struct {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	level.Debug(b.logger).Log(
+		"msg", "GetMetas",
+		"tenant", params.TenantID,
+		"fingerprints", fmt.Sprintf("%x-%x", params.MinFingerprint, params.MaxFingerprint),
+		"timerange", fmt.Sprintf("%s-%s", params.StartTimestamp, params.EndTimestamp),
+	)
+
 	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
 
 	var metas []Meta
@@ -137,7 +147,8 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
-			list, _, err := periodClient.List(ctx, prefix, delimiter)
+			list, commonPrefixes, err := periodClient.List(ctx, prefix, delimiter)
+			level.Debug(b.logger).Log("msg", "list metas for table", "period", periodFrom, "table", table, "items", len(list), "commonPrefixes", commonPrefixes)
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
