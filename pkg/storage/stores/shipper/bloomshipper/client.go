@@ -75,7 +75,7 @@ type MetaSearchParams struct {
 }
 
 func (m MetaSearchParams) String() string {
-	return fmt.Sprintf("%s:%d-%d:%d-%d", m.TenantID, m.MinFingerprint, m.MaxFingerprint, m.StartTimestamp, m.EndTimestamp)
+	return fmt.Sprintf("%s:%s-%s:%d-%d", m.TenantID, m.MinFingerprint, m.MaxFingerprint, m.StartTimestamp, m.EndTimestamp)
 }
 
 type MetaClient interface {
@@ -135,9 +135,7 @@ type BloomClient struct {
 func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
 	level.Debug(b.logger).Log(
 		"msg", "GetMetas",
-		"tenant", params.TenantID,
-		"fingerprints", fmt.Sprintf("%x-%x", params.MinFingerprint, params.MaxFingerprint),
-		"timerange", fmt.Sprintf("%s-%s", params.StartTimestamp, params.EndTimestamp),
+		"params", params.String(),
 	)
 
 	tablesByPeriod := tablesByPeriod(b.periodicConfigs, params.StartTimestamp, params.EndTimestamp)
@@ -145,15 +143,22 @@ func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]
 	var metas []Meta
 	for periodFrom, tables := range tablesByPeriod {
 		level.Debug(b.logger).Log(
-			"msg", "loading metas for period",
-			"period", periodFrom,
+			"msg", "listing metas for period",
+			"period", periodFrom.String(),
 			"tables", strings.Join(tables, ","),
 		)
 		periodClient := b.periodicObjectClients[periodFrom]
 		for _, table := range tables {
 			prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
 			list, commonPrefixes, err := periodClient.List(ctx, prefix, delimiter)
-			level.Debug(b.logger).Log("msg", "list metas for table", "period", periodFrom, "table", table, "items", len(list), "commonPrefixes", commonPrefixes)
+			level.Debug(b.logger).Log(
+				"msg", "listing metas for table",
+				"period", periodFrom.String(),
+				"table", table,
+				"prefix", prefix,
+				"items", len(list),
+				"commonPrefixes", fmt.Sprintf("%s", commonPrefixes),
+			)
 			if err != nil {
 				return nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 			}
