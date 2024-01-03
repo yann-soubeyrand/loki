@@ -59,20 +59,20 @@ type Gateway struct {
 	indexClients []IndexClientWithRange
 	bloomQuerier BloomQuerier
 
-	cfg Config
-	log log.Logger
+	cfg    Config
+	logger log.Logger
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
+func NewIndexGateway(cfg Config, logger log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
-		log:          log,
+		logger:       logger,
 		indexClients: indexClients,
 	}
 
@@ -195,7 +195,7 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	instanceID, err := tenant.TenantID(ctx)
+	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,8 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	predicate := chunk.NewPredicate(matchers, req.Filters)
-	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate)
+	level.Info(g.logger).Log("msg", "get chunks with predicate", "tenant", tenantID, "predicate", fmt.Sprintf("%+v", predicate))
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, tenantID, req.From, req.Through, predicate)
 	if err != nil {
 		return nil, err
 	}
@@ -221,10 +222,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled) or if there are no filters.
 	if g.bloomQuerier == nil || len(req.Filters) == 0 {
+		level.Info(g.logger).Log("msg", "do not filter chunk ids on bloom gateway")
 		return result, nil
 	}
 
-	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Filters...)
+	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, tenantID, req.From, req.Through, result.Refs, req.Filters...)
 	if err != nil {
 		return nil, err
 	}
