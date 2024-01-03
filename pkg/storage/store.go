@@ -498,6 +498,7 @@ func extractLineFilters(p *plan.QueryPlan) []syntax.LineFilter {
 // for that request.
 func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	lf := extractLineFilters(req.Plan)
+	level.Info(s.logger).Log("msg", "extracted line filters", "filters", lf)
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
@@ -547,6 +548,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 
 func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	lf := extractLineFilters(req.Plan)
+	level.Info(s.logger).Log("msg", "extracted line filters", "filters", lf)
 
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
