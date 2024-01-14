@@ -276,9 +276,17 @@ func TestReadingAllLocalFilesAndDoMoreWithSeries(t *testing.T) {
 	fmt.Printf("made merge builder\n")
 	_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
 	fmt.Printf("did merge build\n")
+	for i, itr := range blockIters {
+		fmt.Printf("Block %d, file %s\n", i, files[i])
 
+		for itr.Next() {
+			{
+				itr.At()
+			}
+		}
+
+	}
 }
-
 func createPopulateFunc() func(series *Series, bloom *Bloom) error {
 	return func(series *Series, bloom *Bloom) error {
 		return nil
