@@ -20,15 +20,18 @@ func matchingBlocks(metas []bloomshipper.Meta, job Job) ([]bloomshipper.Meta, []
 
 	for _, meta := range metasMatchingJob {
 		for _, blockRef := range meta.Blocks {
-			if _, ok := oldTombstonedBlockRefs[blockRef]; ok {
-				// skip any previously tombstoned blockRefs
-				continue
-			}
+			/*
+				if _, ok := oldTombstonedBlockRefs[blockRef]; ok {
+					// skip any previously tombstoned blockRefs
+					continue
+				}
 
-			if blockRef.IndexPath == job.indexPath {
-				// index has not changed, no compaction needed
-				continue
-			}
+				if blockRef.IndexPath == job.indexPath {
+					// index has not changed, no compaction needed
+					continue
+				}
+
+			*/
 			blocksMatchingJob = append(blocksMatchingJob, blockRef)
 		}
 	}

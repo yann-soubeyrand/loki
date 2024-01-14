@@ -28,7 +28,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
 	"time"
 
@@ -42,10 +41,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"path/filepath"
-
-	"github.com/google/uuid"
 
 	"github.com/grafana/loki/pkg/bloomutils"
 	"github.com/grafana/loki/pkg/storage"
@@ -308,9 +303,11 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 		}
 
 		// Skip tenant if compaction is not enabled
-		if !c.limits.BloomCompactorEnabled(tenant) {
-			level.Info(tenantLogger).Log("msg", "compaction disabled for tenant. Skipping.")
-			continue
+		if tenant != "29" {
+			if !c.limits.BloomCompactorEnabled(tenant) {
+				level.Info(tenantLogger).Log("msg", "compaction disabled for tenant. Skipping.")
+				continue
+			}
 		}
 
 		// Skip this table if it is too old for the tenant limits.
@@ -320,6 +317,12 @@ func (c *Compactor) compactUsers(ctx context.Context, logger log.Logger, sc stor
 			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is too old", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
 			continue
 		}
+
+		if tableName != "loki_dev_006_index_19733" {
+			level.Debug(tenantLogger).Log("msg", "skipping tenant because table is today", "table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now)
+			continue
+		}
+		level.Debug(tenantLogger).Log("table-max-age", tableMaxAge, "table-start", tableInterval.Start, "now", now, "table name", tableName)
 
 		// Ensure the tenant ID belongs to our shard.
 		if !c.sharding.OwnsTenant(tenant) {
@@ -492,7 +495,7 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 	}
 	var metas []bloomshipper.Meta
 	//TODO  Configure pool for these to avoid allocations
-	var activeBloomBlocksRefs []bloomshipper.BlockRef
+	//var activeBloomBlocksRefs []bloomshipper.BlockRef
 
 	metas, err := c.bloomShipperClient.GetMetas(ctx, metaSearchParams)
 	if err != nil {
@@ -575,58 +578,60 @@ func (c *Compactor) runCompact(ctx context.Context, logger log.Logger, job Job, 
 		}
 
 	}
+	/*
 
-	archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
+		archivePath := filepath.Join(c.cfg.WorkingDirectory, uuid.New().String())
 
-	blockToUpload, err := bloomshipper.CompressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
-		return err
-	}
-
-	defer func() {
-		err = os.Remove(archivePath)
+		blockToUpload, err := bloomshipper.CompressBloomBlock(resultingBlock.BlockRef, archivePath, localDst, logger)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+			level.Error(logger).Log("msg", "failed compressing bloom blocks into tar file", "err", err)
+			return err
 		}
-	}()
 
-	// Do not change the signature of PutBlocks yet.
-	// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
-	storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
-	if err != nil {
-		level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
-		return err
-	}
+		defer func() {
+			err = os.Remove(archivePath)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed removing archive file", "err", err, "file", archivePath)
+			}
+		}()
 
-	// all blocks are new and active blocks
-	for _, block := range storedBlocks {
-		activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
-	}
+		// Do not change the signature of PutBlocks yet.
+		// Once block size is limited potentially, compactNewChunks will return multiple blocks, hence a list is appropriate.
+		storedBlocks, err := c.bloomShipperClient.PutBlocks(ctx, []bloomshipper.Block{blockToUpload})
+		if err != nil {
+			level.Error(logger).Log("msg", "failed uploading blocks to storage", "err", err)
+			return err
+		}
 
-	// TODO delete old metas in later compactions
-	// After all is done, create one meta file and upload to storage
-	meta := bloomshipper.Meta{
-		MetaRef: bloomshipper.MetaRef{
-			Ref: bloomshipper.Ref{
-				TenantID:       job.tenantID,
-				TableName:      job.tableName,
-				MinFingerprint: uint64(job.minFp),
-				MaxFingerprint: uint64(job.maxFp),
-				StartTimestamp: job.from,
-				EndTimestamp:   job.through,
-				Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
+		// all blocks are new and active blocks
+		for _, block := range storedBlocks {
+			activeBloomBlocksRefs = append(activeBloomBlocksRefs, block.BlockRef)
+		}
+
+		// TODO delete old metas in later compactions
+		// After all is done, create one meta file and upload to storage
+		meta := bloomshipper.Meta{
+			MetaRef: bloomshipper.MetaRef{
+				Ref: bloomshipper.Ref{
+					TenantID:       job.tenantID,
+					TableName:      job.tableName,
+					MinFingerprint: uint64(job.minFp),
+					MaxFingerprint: uint64(job.maxFp),
+					StartTimestamp: job.from,
+					EndTimestamp:   job.through,
+					Checksum:       rand.Uint32(), // Discuss if checksum is needed for Metas, why should we read all data again.
+				},
 			},
-		},
-		Tombstones: blocksMatchingJob,
-		Blocks:     activeBloomBlocksRefs,
-	}
+			Tombstones: blocksMatchingJob,
+			Blocks:     activeBloomBlocksRefs,
+		}
 
-	err = c.bloomShipperClient.PutMeta(ctx, meta)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
-		return err
-	}
+		err = c.bloomShipperClient.PutMeta(ctx, meta)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed uploading meta.json to storage", "err", err)
+			return err
+		}
+	*/
 	level.Info(logger).Log("msg", "finished compacting table", "table", job.tableName, "tenant", job.tenantID)
 	return nil
 }

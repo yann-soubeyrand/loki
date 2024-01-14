@@ -45,7 +45,7 @@ func makeBlockIterFromBlocks(ctx context.Context, logger log.Logger,
 	blockIters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], len(blocksToUpdate))
 	blockPaths := make([]string, len(blocksToUpdate))
 
-	err := concurrency.ForEachJob(ctx, len(blocksToUpdate), len(blocksToUpdate), func(ctx context.Context, i int) error {
+	err := concurrency.ForEachJob(ctx, len(blocksToUpdate), 1, func(ctx context.Context, i int) error {
 		b := blocksToUpdate[i]
 
 		lazyBlock, err := bloomShipperClient.GetBlock(ctx, b)
