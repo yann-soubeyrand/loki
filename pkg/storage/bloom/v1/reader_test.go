@@ -257,6 +257,7 @@ func TestReadingAllLocalFilesAndDoMoreWithSeries(t *testing.T) {
 		blockQuerier := NewBlockQuerier(block)
 		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
 	}
+
 	seriesFromSeriesMeta := make([]*Series, 2)
 	series := &Series{
 		Fingerprint: 1,
@@ -267,26 +268,79 @@ func TestReadingAllLocalFilesAndDoMoreWithSeries(t *testing.T) {
 	seriesIter := NewSliceIter(seriesFromSeriesMeta)
 	populate := createPopulateFunc()
 	blockOptions := NewBlockOptions(4, 0)
-	mergeBlockBuilder, _ := NewPersistentBlockBuilder("/tmp/foo", blockOptions)
-	mergeBuilder := NewMergeBuilder(
+	_, _ = NewPersistentBlockBuilder("/tmp/foo", blockOptions) //mergeBlockBuilder
+	_ = NewMergeBuilder(                                       //mergeBuilder
 		blockIters,
 		seriesIter,
 		populate)
 
-	fmt.Printf("made merge builder\n")
-	_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
-	fmt.Printf("did merge build\n")
-	for i, itr := range blockIters {
-		fmt.Printf("Block %d, file %s\n", i, files[i])
+	//mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blockIters...))
+	mergedBlocks := NewHeapIterForSeriesWithBloom(blockIters...)
 
-		for itr.Next() {
-			{
+	/*
+		fmt.Printf("made merge builder\n")
+		//_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
+		fmt.Printf("did merge build\n")
+
+		for i, itr := range blockIters {
+			fmt.Printf("Block %d, file %s\n", i, files[i])
+			//if i != 66 {
+			for itr.Next() {
+				{
+					itr.At()
+				}
+			}
+			//}
+
+		}*/
+
+	for mergedBlocks.Next() {
+		mergedBlocks.At()
+	}
+}
+
+func TestReadingAllLocalFilesAndFigureOutTheIterators(t *testing.T) {
+	var (
+		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
+	)
+
+	_ = os.MkdirAll("/tmp/foo", os.ModePerm)
+	files, _ := listFilesRecursive(dir)
+	blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
+	for i, file := range files {
+		tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
+		_, err := os.Stat(tmpDirI)
+		// Check if the error is due to the directory not existing
+		if os.IsNotExist(err) {
+			cmd := exec.Command("mkdir", tmpDirI)
+			_ = cmd.Run()
+			file, _ := os.Open(file)
+			defer file.Close()
+			reader := bufio.NewReader(file)
+			UnTarGz(tmpDirI, reader)
+		}
+		r := NewDirectoryBlockReader(tmpDirI)
+		block := NewBlock(r)
+		blockQuerier := NewBlockQuerier(block)
+		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+	}
+
+	mergedBlocks := NewHeapIterForSeriesWithBloom(blockIters...)
+
+	/*
+		for _, itr := range blockIters {
+			for itr.Next() {
 				itr.At()
 			}
 		}
+	*/
 
+	for mergedBlocks.Next() {
+		mergedBlocks.At()
 	}
+
 }
+
 func createPopulateFunc() func(series *Series, bloom *Bloom) error {
 	return func(series *Series, bloom *Bloom) error {
 		return nil
