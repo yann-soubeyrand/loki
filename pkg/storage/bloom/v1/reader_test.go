@@ -320,9 +320,9 @@ func TestReadingAllLocalFilesAndFigureOutTheIterators(t *testing.T) {
 			UnTarGz(tmpDirI, reader)
 		}
 		r := NewDirectoryBlockReader(tmpDirI)
-		block := NewBlock(r)
-		blockQuerier := NewBlockQuerier(block)
-		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+		block := NewBlockWithIndex(r, i)
+		blockQuerier := NewBlockQuerierWithIndex(block, i)
+		blockIters[i] = NewPeekingIterWithIndex[*SeriesWithBloom](blockQuerier, i)
 	}
 
 	mergedBlocks := NewHeapIterForSeriesWithBloom(blockIters...)

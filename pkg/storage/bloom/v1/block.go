@@ -22,11 +22,19 @@ type Block struct {
 
 	initialized bool
 	dataRange   SeriesHeader
+	idx         int
 }
 
 func NewBlock(reader BlockReader) *Block {
 	return &Block{
 		reader: reader,
+	}
+}
+
+func NewBlockWithIndex(reader BlockReader, idx int) *Block {
+	return &Block{
+		reader: reader,
+		idx:    idx,
 	}
 }
 
@@ -78,6 +86,7 @@ type BlockQuerier struct {
 	schema LazySchema
 
 	cur *SeriesWithBloom
+	idx int
 }
 
 func NewBlockQuerier(b *Block) *BlockQuerier {
@@ -93,6 +102,20 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	}
 }
 
+func NewBlockQuerierWithIndex(b *Block, idx int) *BlockQuerier {
+	return &BlockQuerier{
+		series: NewLazySeriesIter(b),
+		blooms: NewLazyBloomIterWithIndex(b, idx),
+		schema: func() (Schema, error) {
+			if err := b.LoadHeaders(); err != nil {
+				return Schema{}, err
+			}
+			return b.index.schema, nil
+		},
+		idx: idx,
+	}
+}
+
 func (bq *BlockQuerier) Schema() (Schema, error) {
 	return bq.schema()
 }
@@ -102,6 +125,7 @@ func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 }
 
 func (bq *BlockQuerier) Next() bool {
+	fmt.Printf("BlockQuerier[%d].Next()\n", bq.idx)
 	if !bq.series.Next() {
 		return false
 	}

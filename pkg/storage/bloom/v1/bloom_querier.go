@@ -1,6 +1,9 @@
 package v1
 
-import "github.com/pkg/errors"
+import (
+	"fmt"
+	"github.com/pkg/errors"
+)
 
 type BloomQuerier interface {
 	Seek(BloomOffset) (*Bloom, error)
@@ -14,11 +17,20 @@ type LazyBloomIter struct {
 	err          error
 	curPageIndex int
 	curPage      *BloomPageDecoder
+
+	idx int
 }
 
 func NewLazyBloomIter(b *Block) *LazyBloomIter {
 	return &LazyBloomIter{
 		b: b,
+	}
+}
+
+func NewLazyBloomIterWithIndex(b *Block, idx int) *LazyBloomIter {
+	return &LazyBloomIter{
+		b:   b,
+		idx: idx,
 	}
 }
 
@@ -33,6 +45,8 @@ func (it *LazyBloomIter) ensureInit() {
 }
 
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
+	fmt.Printf("LazyBloomIter[%d].Seek(), offset page:%d, offset bytes:%d, curPageIndex:%d\n", it.idx, offset.Page, offset.ByteOffset, it.curPageIndex)
+
 	it.ensureInit()
 
 	// if we need a different page or the current page hasn't been loaded,
@@ -58,6 +72,8 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 }
 
 func (it *LazyBloomIter) Next() bool {
+	fmt.Printf("LazyBloomIter[%d].Next()\n", it.idx)
+
 	it.ensureInit()
 	if it.err != nil {
 		return false
@@ -69,6 +85,8 @@ func (it *LazyBloomIter) next() bool {
 	if it.err != nil {
 		return false
 	}
+
+	fmt.Printf("LazyBloomIter[%d].next(), curPageIndex: %d, it.b.blooms.pageHeaders: %d\n", it.idx, it.curPageIndex, len(it.b.blooms.pageHeaders))
 
 	for it.curPageIndex < len(it.b.blooms.pageHeaders) {
 		// first access of next page

@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -90,10 +91,16 @@ type PeekIter[T any] struct {
 	init      bool
 	zero      T // zero value of T for returning empty Peek's
 	cur, next *T
+
+	idx int
 }
 
 func NewPeekingIter[T any](itr Iterator[T]) *PeekIter[T] {
 	return &PeekIter[T]{itr: itr}
+}
+
+func NewPeekingIterWithIndex[T any](itr Iterator[T], idx int) *PeekIter[T] {
+	return &PeekIter[T]{itr: itr, idx: idx}
 }
 
 // populates the first element so Peek can be used and subsequent Next()
@@ -121,12 +128,16 @@ func (it *PeekIter[T]) cacheNext() {
 }
 
 func (it *PeekIter[T]) Next() bool {
+	fmt.Printf("PeekIter[%d].Next()\n", it.idx)
+
 	it.ensureInit()
 	it.cacheNext()
 	return it.cur != nil
 }
 
 func (it *PeekIter[T]) Peek() (T, bool) {
+	fmt.Printf("PeekIter[%d].Peek()\n", it.idx)
+
 	it.ensureInit()
 	if it.next == nil {
 		return it.zero, false
