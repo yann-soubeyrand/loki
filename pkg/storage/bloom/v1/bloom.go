@@ -142,6 +142,7 @@ func (d *BloomPageDecoder) Seek(offset int) {
 func (d *BloomPageDecoder) Next() bool {
 	// end of iteration, no error
 	fmt.Printf("BloomPageDecoder[%d].Next()\n", d.idx)
+	fmt.Printf("d.decLen: %d\n", d.dec.Len())
 
 	if d.dec.Len() == 0 {
 		return false

@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/efficientgo/core/errors"
@@ -20,12 +21,20 @@ type LazySeriesIter struct {
 	err          error
 	curPageIndex int
 	curPage      *SeriesPageDecoder
+	idx          int
 }
 
 // Decodes series pages one at a time and iterates through them
 func NewLazySeriesIter(b *Block) *LazySeriesIter {
 	return &LazySeriesIter{
 		b: b,
+	}
+}
+
+func NewLazySeriesIterWithIndex(b *Block, idx int) *LazySeriesIter {
+	return &LazySeriesIter{
+		b:   b,
+		idx: idx,
 	}
 }
 
@@ -41,6 +50,7 @@ func (it *LazySeriesIter) ensureInit() {
 
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
 func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
+	fmt.Printf("LazySeriesIterator[%d].Seek(%d) - len pageheaders %d, curPageIdx %d\n", it.idx, fp, len(it.b.index.pageHeaders), it.curPageIndex)
 	it.ensureInit()
 	if it.err != nil {
 		return it.err

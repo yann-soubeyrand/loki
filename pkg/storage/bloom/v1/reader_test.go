@@ -101,204 +101,189 @@ func TestEmptyFiles(t *testing.T) {
 
 }
 
-func TestReadingLocalFilesViaShipper(t *testing.T) {
-	var (
-		//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
-		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
-	)
-	files, _ := listFilesRecursive(dir)
-	for _, file := range files {
+/*
+	func TestReadingLocalFilesViaShipper(t *testing.T) {
+		var (
+			//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
+			dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
+		)
+		files, _ := listFilesRecursive(dir)
+		for _, file := range files {
+			cmd := exec.Command("mkdir", "/tmp/foo")
+			_ = cmd.Run()
+			fmt.Println(file)
+			file, _ := os.Open(file)
+			defer file.Close()
+			reader := bufio.NewReader(file)
+			UnTarGz("/tmp/foo", reader)
+			r := NewDirectoryBlockReader("/tmp/foo")
+			err := r.Init()
+			require.NoError(t, err)
+
+			_, err = r.Index()
+			require.NoError(t, err)
+
+			_, err = r.Blooms()
+			require.NoError(t, err)
+
+			block := NewBlock(r)
+			blockQuerier := NewBlockQuerier(block)
+			blockIters := NewPeekingIter[*SeriesWithBloom](blockQuerier)
+			for blockIters.Next() {
+				_ = blockIters.At()
+			}
+			blockQuerier.blooms.Next()
+
+			cmd = exec.Command("rm", "-rf", "/tmp/foo")
+			_ = cmd.Run()
+		}
+	}
+
+	func TestReadingAllLocalFiles(t *testing.T) {
+		var (
+			//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
+			dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
+		)
 		cmd := exec.Command("mkdir", "/tmp/foo")
 		_ = cmd.Run()
-		fmt.Println(file)
-		file, _ := os.Open(file)
-		defer file.Close()
-		reader := bufio.NewReader(file)
-		UnTarGz("/tmp/foo", reader)
-		r := NewDirectoryBlockReader("/tmp/foo")
-		err := r.Init()
-		require.NoError(t, err)
-
-		_, err = r.Index()
-		require.NoError(t, err)
-
-		_, err = r.Blooms()
-		require.NoError(t, err)
-
-		block := NewBlock(r)
-		blockQuerier := NewBlockQuerier(block)
-		blockIters := NewPeekingIter[*SeriesWithBloom](blockQuerier)
-		for blockIters.Next() {
-			_ = blockIters.At()
-		}
-		blockQuerier.blooms.Next()
-
-		cmd = exec.Command("rm", "-rf", "/tmp/foo")
-		_ = cmd.Run()
-	}
-}
-
-func TestReadingAllLocalFiles(t *testing.T) {
-	var (
-		//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
-		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
-	)
-	cmd := exec.Command("mkdir", "/tmp/foo")
-	_ = cmd.Run()
-	files, _ := listFilesRecursive(dir)
-	blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
-	for i, file := range files {
-		tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
-		cmd := exec.Command("mkdir", tmpDirI)
-		_ = cmd.Run()
-		fmt.Println(file)
-		file, _ := os.Open(file)
-		defer file.Close()
-		reader := bufio.NewReader(file)
-		UnTarGz(tmpDirI, reader)
-		r := NewDirectoryBlockReader(tmpDirI)
-		err := r.Init()
-		require.NoError(t, err)
-
-		_, err = r.Index()
-		require.NoError(t, err)
-
-		_, err = r.Blooms()
-		require.NoError(t, err)
-
-		block := NewBlock(r)
-		blockQuerier := NewBlockQuerier(block)
-		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
-
-	}
-	heap := NewHeapIterForSeriesWithBloom(blockIters...)
-	fmt.Printf("made heap iterator\n")
-	_ = heap.Next()
-	fmt.Println("Got here")
-	cmd = exec.Command("rm", "-rf", "/tmp/foo")
-	_ = cmd.Run()
-}
-
-func TestReadingAllLocalFilesAndDoMore(t *testing.T) {
-	var (
-		//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
-		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
-	)
-	cmd := exec.Command("mkdir", "/tmp/foo")
-	_ = cmd.Run()
-	files, _ := listFilesRecursive(dir)
-	blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
-	for i, file := range files {
-		tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
-		cmd := exec.Command("mkdir", tmpDirI)
-		_ = cmd.Run()
-		fmt.Println(file)
-		file, _ := os.Open(file)
-		defer file.Close()
-		reader := bufio.NewReader(file)
-		UnTarGz(tmpDirI, reader)
-		r := NewDirectoryBlockReader(tmpDirI)
-		err := r.Init()
-		require.NoError(t, err)
-
-		_, err = r.Index()
-		require.NoError(t, err)
-
-		_, err = r.Blooms()
-		require.NoError(t, err)
-
-		block := NewBlock(r)
-		blockQuerier := NewBlockQuerier(block)
-		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
-
-	}
-	seriesFromSeriesMeta := make([]*Series, 0)
-	seriesIter := NewSliceIter(seriesFromSeriesMeta)
-	populate := createPopulateFunc()
-	blockOptions := NewBlockOptions(4, 0)
-	mergeBlockBuilder, _ := NewPersistentBlockBuilder("/tmp/foo", blockOptions)
-	//mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blockIters...))
-	mergeBuilder := NewMergeBuilder(
-		blockIters,
-		seriesIter,
-		populate)
-
-	fmt.Printf("made merge builder\n")
-	_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
-	fmt.Printf("did merge build\n")
-
-	cmd = exec.Command("rm", "-rf", "/tmp/foo")
-	_ = cmd.Run()
-}
-
-func TestReadingAllLocalFilesAndDoMoreWithSeries(t *testing.T) {
-	var (
-		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
-	)
-
-	_ = os.MkdirAll("/tmp/foo", os.ModePerm)
-	files, _ := listFilesRecursive(dir)
-	blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
-	for i, file := range files {
-		tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
-		_, err := os.Stat(tmpDirI)
-		//fmt.Printf("File %d is %s\n", i, file)
-		// Check if the error is due to the directory not existing
-		if os.IsNotExist(err) {
+		files, _ := listFilesRecursive(dir)
+		blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
+		for i, file := range files {
+			tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
 			cmd := exec.Command("mkdir", tmpDirI)
 			_ = cmd.Run()
+			fmt.Println(file)
 			file, _ := os.Open(file)
 			defer file.Close()
 			reader := bufio.NewReader(file)
 			UnTarGz(tmpDirI, reader)
+			r := NewDirectoryBlockReader(tmpDirI)
+			err := r.Init()
+			require.NoError(t, err)
+
+			_, err = r.Index()
+			require.NoError(t, err)
+
+			_, err = r.Blooms()
+			require.NoError(t, err)
+
+			block := NewBlock(r)
+			blockQuerier := NewBlockQuerier(block)
+			blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+
 		}
-		r := NewDirectoryBlockReader(tmpDirI)
-		block := NewBlock(r)
-		blockQuerier := NewBlockQuerier(block)
-		blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+		heap := NewHeapIterForSeriesWithBloom(blockIters...)
+		fmt.Printf("made heap iterator\n")
+		_ = heap.Next()
+		fmt.Println("Got here")
+		cmd = exec.Command("rm", "-rf", "/tmp/foo")
+		_ = cmd.Run()
 	}
 
-	seriesFromSeriesMeta := make([]*Series, 2)
-	series := &Series{
-		Fingerprint: 1,
-		Chunks:      nil,
-	}
-	seriesFromSeriesMeta[0] = series
-	seriesFromSeriesMeta[1] = series
-	seriesIter := NewSliceIter(seriesFromSeriesMeta)
-	populate := createPopulateFunc()
-	blockOptions := NewBlockOptions(4, 0)
-	_, _ = NewPersistentBlockBuilder("/tmp/foo", blockOptions) //mergeBlockBuilder
-	_ = NewMergeBuilder(                                       //mergeBuilder
-		blockIters,
-		seriesIter,
-		populate)
+	func TestReadingAllLocalFilesAndDoMore(t *testing.T) {
+		var (
+			//dir = "/Users/progers/baddat/loki_dev_006_index_19731/29/blooms/"
+			dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
+		)
+		cmd := exec.Command("mkdir", "/tmp/foo")
+		_ = cmd.Run()
+		files, _ := listFilesRecursive(dir)
+		blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
+		for i, file := range files {
+			tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
+			cmd := exec.Command("mkdir", tmpDirI)
+			_ = cmd.Run()
+			fmt.Println(file)
+			file, _ := os.Open(file)
+			defer file.Close()
+			reader := bufio.NewReader(file)
+			UnTarGz(tmpDirI, reader)
+			r := NewDirectoryBlockReader(tmpDirI)
+			err := r.Init()
+			require.NoError(t, err)
 
-	//mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blockIters...))
-	mergedBlocks := NewHeapIterForSeriesWithBloom(blockIters...)
+			_, err = r.Index()
+			require.NoError(t, err)
 
-	/*
+			_, err = r.Blooms()
+			require.NoError(t, err)
+
+			block := NewBlock(r)
+			blockQuerier := NewBlockQuerier(block)
+			blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+
+		}
+		seriesFromSeriesMeta := make([]*Series, 0)
+		seriesIter := NewSliceIter(seriesFromSeriesMeta)
+		populate := createPopulateFunc()
+		blockOptions := NewBlockOptions(4, 0)
+		mergeBlockBuilder, _ := NewPersistentBlockBuilder("/tmp/foo", blockOptions)
+		//mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blockIters...))
+		mergeBuilder := NewMergeBuilder(
+			blockIters,
+			seriesIter,
+			populate)
+
 		fmt.Printf("made merge builder\n")
-		//_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
+		_, _ = mergeBlockBuilder.MergeBuild(mergeBuilder)
 		fmt.Printf("did merge build\n")
 
-		for i, itr := range blockIters {
-			fmt.Printf("Block %d, file %s\n", i, files[i])
-			//if i != 66 {
-			for itr.Next() {
-				{
-					itr.At()
-				}
-			}
-			//}
-
-		}*/
-
-	for mergedBlocks.Next() {
-		mergedBlocks.At()
+		cmd = exec.Command("rm", "-rf", "/tmp/foo")
+		_ = cmd.Run()
 	}
-}
 
+	func TestReadingAllLocalFilesAndDoMoreWithSeries(t *testing.T) {
+		var (
+			dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"
+		)
+
+		_ = os.MkdirAll("/tmp/foo", os.ModePerm)
+		files, _ := listFilesRecursive(dir)
+		blockIters := make([]PeekingIterator[*SeriesWithBloom], len(files))
+		for i, file := range files {
+			tmpDirI := "/tmp/foo/" + strconv.Itoa(i)
+			_, err := os.Stat(tmpDirI)
+			//fmt.Printf("File %d is %s\n", i, file)
+			// Check if the error is due to the directory not existing
+			if os.IsNotExist(err) {
+				cmd := exec.Command("mkdir", tmpDirI)
+				_ = cmd.Run()
+				file, _ := os.Open(file)
+				defer file.Close()
+				reader := bufio.NewReader(file)
+				UnTarGz(tmpDirI, reader)
+			}
+			r := NewDirectoryBlockReader(tmpDirI)
+			block := NewBlock(r)
+			blockQuerier := NewBlockQuerier(block)
+			blockIters[i] = NewPeekingIter[*SeriesWithBloom](blockQuerier)
+		}
+
+		seriesFromSeriesMeta := make([]*Series, 2)
+		series := &Series{
+			Fingerprint: 1,
+			Chunks:      nil,
+		}
+		seriesFromSeriesMeta[0] = series
+		seriesFromSeriesMeta[1] = series
+		seriesIter := NewSliceIter(seriesFromSeriesMeta)
+		populate := createPopulateFunc()
+		blockOptions := NewBlockOptions(4, 0)
+		_, _ = NewPersistentBlockBuilder("/tmp/foo", blockOptions) //mergeBlockBuilder
+		_ = NewMergeBuilder(                                       //mergeBuilder
+			blockIters,
+			seriesIter,
+			populate)
+
+		//mergedBlocks := NewPeekingIter[*SeriesWithBloom](NewHeapIterForSeriesWithBloom(blockIters...))
+		mergedBlocks := NewHeapIterForSeriesWithBloom(blockIters...)
+
+
+		for mergedBlocks.Next() {
+			mergedBlocks.At()
+		}
+	}
+*/
 func TestReadingAllLocalFilesAndFigureOutTheIterators(t *testing.T) {
 	var (
 		dir = "/Users/progers/baddata2/loki_dev_006_index_19733/29/blooms/"

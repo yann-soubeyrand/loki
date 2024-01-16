@@ -104,7 +104,7 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 
 func NewBlockQuerierWithIndex(b *Block, idx int) *BlockQuerier {
 	return &BlockQuerier{
-		series: NewLazySeriesIter(b),
+		series: NewLazySeriesIterWithIndex(b, idx),
 		blooms: NewLazyBloomIterWithIndex(b, idx),
 		schema: func() (Schema, error) {
 			if err := b.LoadHeaders(); err != nil {
