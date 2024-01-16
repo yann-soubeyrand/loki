@@ -136,7 +136,7 @@ func (it *PeekIter[T]) Next() bool {
 }
 
 func (it *PeekIter[T]) Peek() (T, bool) {
-	fmt.Printf("PeekIter[%d].Peek()\n", it.idx)
+	//fmt.Printf("PeekIter[%d].Peek()\n", it.idx)
 
 	it.ensureInit()
 	if it.next == nil {

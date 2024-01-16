@@ -56,7 +56,7 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	return nil
 }
 
-func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int, idx int) (*BloomPageDecoder, error) {
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
 		return nil, errors.Wrap(err, "checksumming bloom page")
 	}
@@ -73,7 +73,7 @@ func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompr
 		return nil, errors.Wrap(err, "decompressing bloom page")
 	}
 
-	decoder := NewBloomPageDecoder(b)
+	decoder := NewBloomPageDecoderWithIndex(b, idx)
 
 	return decoder, nil
 }
@@ -97,6 +97,26 @@ func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 	return decoder
 }
 
+func NewBloomPageDecoderWithIndex(data []byte, idx int) *BloomPageDecoder {
+	// last 8 bytes are the number of blooms in this page
+	dec := encoding.DecWith(data[len(data)-8:])
+	n := int(dec.Be64())
+	// reset data to the bloom portion of the page
+	data = data[:len(data)-8]
+	dec.B = data
+
+	// reset data to the bloom portion of the page
+
+	decoder := &BloomPageDecoder{
+		dec:  &dec,
+		data: data,
+		n:    n,
+		idx:  idx,
+	}
+
+	return decoder
+}
+
 // Decoder is a seekable, reset-able iterator
 type BloomPageDecoder struct {
 	data []byte
@@ -105,6 +125,7 @@ type BloomPageDecoder struct {
 	n   int // number of blooms in page
 	cur *Bloom
 	err error
+	idx int
 }
 
 func (d *BloomPageDecoder) Reset() {
@@ -114,11 +135,14 @@ func (d *BloomPageDecoder) Reset() {
 }
 
 func (d *BloomPageDecoder) Seek(offset int) {
+	fmt.Printf("BloomPageDecoder[%d].Seek(), offset:%d\n", d.idx, offset)
 	d.dec.B = d.data[offset:]
 }
 
 func (d *BloomPageDecoder) Next() bool {
 	// end of iteration, no error
+	fmt.Printf("BloomPageDecoder[%d].Next()\n", d.idx)
+
 	if d.dec.Len() == 0 {
 		return false
 	}
@@ -213,12 +237,16 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) error {
 	return nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageDecoder, error) {
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, idx int) (*BloomPageDecoder, error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
 	}
 
+	fmt.Printf("BloomPageDecoder[%d](pageIdx:%d)\n", idx, pageIdx)
+
 	page := b.pageHeaders[pageIdx]
+
+	fmt.Printf("Page.Offset:%d\n", page.Offset)
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to bloom page")
@@ -232,5 +260,5 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int) (*BloomPageD
 
 	dec := encoding.DecWith(data)
 
-	return LazyDecodeBloomPage(&dec, b.schema.DecompressorPool(), page.DecompressedLen)
+	return LazyDecodeBloomPage(&dec, b.schema.DecompressorPool(), page.DecompressedLen, idx)
 }
