@@ -57,6 +57,10 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return
 		}
+
+		for i, hdr := range it.b.blooms.pageHeaders {
+			fmt.Printf("LazyBloomIter[%d].Seek() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+		}
 		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.idx)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
@@ -95,6 +99,9 @@ func (it *LazyBloomIter) next() bool {
 			if err != nil {
 				it.err = errors.Wrap(err, "getting blooms reader")
 				return false
+			}
+			for i, hdr := range it.b.blooms.pageHeaders {
+				fmt.Printf("LazyBloomIter[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
 			}
 
 			it.curPage, err = it.b.blooms.BloomPageDecoder(

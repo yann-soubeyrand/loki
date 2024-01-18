@@ -82,6 +82,10 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		if err != nil {
 			return errors.Wrap(err, "getting index reader")
 		}
+		/*for i, hdr := range it.b.index.pageHeaders {
+			fmt.Printf("LazySeriesIterator[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.NumSeries, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+		}*/
+		fmt.Printf("LazySeriesIterator[%d].Seek(%d) - loading page %d\n", it.idx, fp, page.Offset)
 		it.curPage, err = it.b.index.NewSeriesPageDecoder(
 			r,
 			page,
@@ -110,11 +114,16 @@ func (it *LazySeriesIter) next() bool {
 		// first access of next page
 		if it.curPage == nil {
 			curHeader := it.b.index.pageHeaders[it.curPageIndex]
+			for i, hdr := range it.b.index.pageHeaders {
+				fmt.Printf("LazySeriesIterator[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.NumSeries, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+			}
 			r, err := it.b.reader.Index()
 			if err != nil {
 				it.err = errors.Wrap(err, "getting index reader")
 				return false
 			}
+			fmt.Printf("LazySeriesIterator[%d].next() - loading page %d\n", it.idx, curHeader.Offset)
+
 			it.curPage, err = it.b.index.NewSeriesPageDecoder(
 				r,
 				curHeader,
