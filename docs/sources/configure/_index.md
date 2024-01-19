@@ -5401,7 +5401,8 @@ azure:
   # CLI flag: -ruler-storage.azure.account-name
   [account_name: <string> | default = ""]
 
-  # Azure storage account key
+  # Azure storage account key. If unset, Azure managed identities will be used
+  # for authentication instead.
   # CLI flag: -ruler-storage.azure.account-key
   [account_key: <string> | default = ""]
 
@@ -5417,13 +5418,19 @@ azure:
   [container_name: <string> | default = "loki"]
 
   # Azure storage endpoint suffix without schema. The account name will be
-  # prefixed to this value to create the FQDN
+  # prefixed to this value to create the FQDN. If set to empty string, default
+  # endpoint suffix is used.
   # CLI flag: -ruler-storage.azure.endpoint-suffix
   [endpoint_suffix: <string> | default = ""]
 
   # Number of retries for recoverable errors
   # CLI flag: -ruler-storage.azure.max-retries
   [max_retries: <int> | default = 20]
+
+  # User assigned managed identity. If empty, then System assigned identity is
+  # used.
+  # CLI flag: -ruler-storage.azure.user-assigned-id
+  [user_assigned_id: <string> | default = ""]
 
   http:
     # The time an idle connection will remain idle before closing.

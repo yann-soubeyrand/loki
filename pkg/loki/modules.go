@@ -1050,7 +1050,6 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	if !t.Cfg.Ruler.StoreConfig.IsDefaults() {
 		t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.clientMetrics, ruler.GroupLoader{}, util_log.Logger)
 	} else {
-		// FIXME(ashwanth): pass SSE overrides
 		t.RulerStorage, err = base_ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, nil, ruler.GroupLoader{}, util_log.Logger, prometheus.DefaultRegisterer)
 	}
 
