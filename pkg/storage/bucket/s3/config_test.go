@@ -246,6 +246,15 @@ func TestConfig_Validate(t *testing.T) {
 			Config{SignatureVersion: SignatureVersionV4, StorageClass: aws.StorageClassStandardInfrequentAccess},
 			nil,
 		},
+		"should fail on invalid endpoint prefix": {
+			Config{
+				Endpoint:         "foobar.s3.eu-central-1.amazonaws.com",
+				BucketName:       "foobar",
+				SignatureVersion: SignatureVersionV4,
+				StorageClass:     aws.StorageClassStandard,
+			},
+			errInvalidEndpointPrefix,
+		},
 	}
 
 	for name, test := range tests {
