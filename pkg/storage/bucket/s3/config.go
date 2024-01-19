@@ -66,7 +66,7 @@ type Config struct {
 	StorageClass     string         `yaml:"storage_class"`
 
 	SSE  SSEConfig  `yaml:"sse"`
-	HTTP HTTPConfig `yaml:"http"`
+	HTTP HTTPConfig `yaml:"http_config"`
 }
 
 // RegisterFlags registers the flags for s3 storage with the provided prefix

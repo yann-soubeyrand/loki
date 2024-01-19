@@ -18,7 +18,7 @@ type Config struct {
 	MaxRetries         int            `yaml:"max_retries"`
 	UserAssignedID     string         `yaml:"user_assigned_id"`
 
-	http.Config `yaml:"http"`
+	http.Config `yaml:"http_config"`
 }
 
 // RegisterFlags registers the flags for Azure storage

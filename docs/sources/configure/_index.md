@@ -5347,7 +5347,7 @@ s3:
     # CLI flag: -ruler-storage.s3.sse.kms-encryption-context
     [kms_encryption_context: <string> | default = ""]
 
-  http:
+  http_config:
     # The time an idle connection will remain idle before closing.
     # CLI flag: -ruler-storage.s3.http.idle-conn-timeout
     [idle_conn_timeout: <duration> | default = 1m30s]
@@ -5387,7 +5387,7 @@ s3:
 
 gcs:
   # GCS bucket name
-  # CLI flag: -ruler-storage.gcs.bucket-name
+  # CLI flag: -ruler-storage.gcs.bucketname
   [bucket_name: <string> | default = ""]
 
   # JSON representing either a Google Developers Console client_credentials.json
@@ -5432,7 +5432,7 @@ azure:
   # CLI flag: -ruler-storage.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
-  http:
+  http_config:
     # The time an idle connection will remain idle before closing.
     # CLI flag: -ruler-storage.azure.http.idle-conn-timeout
     [idle_conn_timeout: <duration> | default = 1m30s]
