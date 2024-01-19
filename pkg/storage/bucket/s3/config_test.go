@@ -62,7 +62,7 @@ sse:
   type: test-type
   kms_key_id: test-kms-key-id
   kms_encryption_context: test-kms-encryption-context
-http:
+http_config:
   idle_conn_timeout: 2s
   response_header_timeout: 3s
   insecure_skip_verify: true
