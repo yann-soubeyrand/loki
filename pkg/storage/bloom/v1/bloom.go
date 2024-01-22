@@ -135,14 +135,14 @@ func (d *BloomPageDecoder) Reset() {
 }
 
 func (d *BloomPageDecoder) Seek(offset int) {
-	fmt.Printf("BloomPageDecoder[%d].Seek(), offset:%d\n", d.idx, offset)
+	//fmt.Printf("BloomPageDecoder[%d].Seek(), offset:%d\n", d.idx, offset)
 	d.dec.B = d.data[offset:]
 }
 
 func (d *BloomPageDecoder) Next() bool {
 	// end of iteration, no error
-	fmt.Printf("BloomPageDecoder[%d].Next()\n", d.idx)
-	fmt.Printf("d.decLen: %d\n", d.dec.Len())
+	//fmt.Printf("BloomPageDecoder[%d].Next()\n", d.idx)
+	//fmt.Printf("d.decLen: %d\n", d.dec.Len())
 
 	if d.dec.Len() == 0 {
 		return false
@@ -243,11 +243,11 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, idx int) (*B
 		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
 	}
 
-	fmt.Printf("BloomPageDecoder[%d](pageIdx:%d)\n", idx, pageIdx)
+	//fmt.Printf("BloomPageDecoder[%d](pageIdx:%d)\n", idx, pageIdx)
 
 	page := b.pageHeaders[pageIdx]
 
-	fmt.Printf("Page.Offset:%d\n", page.Offset)
+	//fmt.Printf("Page.Offset:%d\n", page.Offset)
 
 	if _, err := r.Seek(int64(page.Offset), io.SeekStart); err != nil {
 		return nil, errors.Wrap(err, "seeking to bloom page")

@@ -2,7 +2,6 @@ package v1
 
 import (
 	"context"
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -128,7 +127,7 @@ func (it *PeekIter[T]) cacheNext() {
 }
 
 func (it *PeekIter[T]) Next() bool {
-	fmt.Printf("PeekIter[%d].Next()\n", it.idx)
+	//fmt.Printf("PeekIter[%d].Next()\n", it.idx)
 
 	it.ensureInit()
 	it.cacheNext()

@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/efficientgo/core/errors"
@@ -50,7 +49,7 @@ func (it *LazySeriesIter) ensureInit() {
 
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
 func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
-	fmt.Printf("LazySeriesIterator[%d].Seek(%d) - len pageheaders %d, curPageIdx %d\n", it.idx, fp, len(it.b.index.pageHeaders), it.curPageIndex)
+	//fmt.Printf("LazySeriesIterator[%d].Seek(%d) - len pageheaders %d, curPageIdx %d\n", it.idx, fp, len(it.b.index.pageHeaders), it.curPageIndex)
 	it.ensureInit()
 	if it.err != nil {
 		return it.err
@@ -85,7 +84,7 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 		/*for i, hdr := range it.b.index.pageHeaders {
 			fmt.Printf("LazySeriesIterator[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.NumSeries, hdr.Len, hdr.DecompressedLen, hdr.Offset)
 		}*/
-		fmt.Printf("LazySeriesIterator[%d].Seek(%d) - loading page %d\n", it.idx, fp, page.Offset)
+		//fmt.Printf("LazySeriesIterator[%d].Seek(%d) - loading page %d\n", it.idx, fp, page.Offset)
 		it.curPage, err = it.b.index.NewSeriesPageDecoder(
 			r,
 			page,
@@ -114,15 +113,18 @@ func (it *LazySeriesIter) next() bool {
 		// first access of next page
 		if it.curPage == nil {
 			curHeader := it.b.index.pageHeaders[it.curPageIndex]
-			for i, hdr := range it.b.index.pageHeaders {
-				fmt.Printf("LazySeriesIterator[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.NumSeries, hdr.Len, hdr.DecompressedLen, hdr.Offset)
-			}
+			/*
+				for i, hdr := range it.b.index.pageHeaders {
+					fmt.Printf("LazySeriesIterator[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.NumSeries, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+				}
+
+			*/
 			r, err := it.b.reader.Index()
 			if err != nil {
 				it.err = errors.Wrap(err, "getting index reader")
 				return false
 			}
-			fmt.Printf("LazySeriesIterator[%d].next() - loading page %d\n", it.idx, curHeader.Offset)
+			//fmt.Printf("LazySeriesIterator[%d].next() - loading page %d\n", it.idx, curHeader.Offset)
 
 			it.curPage, err = it.b.index.NewSeriesPageDecoder(
 				r,

@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 )
 
@@ -45,7 +44,7 @@ func (it *LazyBloomIter) ensureInit() {
 }
 
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
-	fmt.Printf("LazyBloomIter[%d].Seek(), offset page:%d, offset bytes:%d, curPageIndex:%d\n", it.idx, offset.Page, offset.ByteOffset, it.curPageIndex)
+	//fmt.Printf("LazyBloomIter[%d].Seek(), offset page:%d, offset bytes:%d, curPageIndex:%d\n", it.idx, offset.Page, offset.ByteOffset, it.curPageIndex)
 
 	it.ensureInit()
 
@@ -58,9 +57,12 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 			return
 		}
 
-		for i, hdr := range it.b.blooms.pageHeaders {
-			fmt.Printf("LazyBloomIter[%d].Seek() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
-		}
+		/*
+			for i, hdr := range it.b.blooms.pageHeaders {
+				fmt.Printf("LazyBloomIter[%d].Seek() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+			}
+
+		*/
 		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.idx)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
@@ -76,7 +78,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 }
 
 func (it *LazyBloomIter) Next() bool {
-	fmt.Printf("LazyBloomIter[%d].Next()\n", it.idx)
+	//fmt.Printf("LazyBloomIter[%d].Next()\n", it.idx)
 
 	it.ensureInit()
 	if it.err != nil {
@@ -90,7 +92,7 @@ func (it *LazyBloomIter) next() bool {
 		return false
 	}
 
-	fmt.Printf("LazyBloomIter[%d].next(), curPageIndex: %d, it.b.blooms.pageHeaders: %d\n", it.idx, it.curPageIndex, len(it.b.blooms.pageHeaders))
+	//fmt.Printf("LazyBloomIter[%d].next(), curPageIndex: %d, it.b.blooms.pageHeaders: %d\n", it.idx, it.curPageIndex, len(it.b.blooms.pageHeaders))
 
 	for it.curPageIndex < len(it.b.blooms.pageHeaders) {
 		// first access of next page
@@ -100,9 +102,12 @@ func (it *LazyBloomIter) next() bool {
 				it.err = errors.Wrap(err, "getting blooms reader")
 				return false
 			}
-			for i, hdr := range it.b.blooms.pageHeaders {
-				fmt.Printf("LazyBloomIter[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
-			}
+			/*
+				for i, hdr := range it.b.blooms.pageHeaders {
+					fmt.Printf("LazyBloomIter[%d].next() - page header[%d]: Num:%d, compressed: %d, uncompressed: %d, offset: %d\n", it.idx, i, hdr.N, hdr.Len, hdr.DecompressedLen, hdr.Offset)
+				}
+
+			*/
 
 			it.curPage, err = it.b.blooms.BloomPageDecoder(
 				r,

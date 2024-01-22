@@ -125,7 +125,7 @@ func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
 }
 
 func (bq *BlockQuerier) Next() bool {
-	fmt.Printf("BlockQuerier[%d].Next()\n", bq.idx)
+	//fmt.Printf("BlockQuerier[%d].Next()\n", bq.idx)
 	if !bq.series.Next() {
 		return false
 	}
