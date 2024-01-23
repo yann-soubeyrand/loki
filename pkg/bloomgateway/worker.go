@@ -216,8 +216,11 @@ func (w *worker) running(ctx context.Context) error {
 				}
 
 				partitionedTasks := partitionFingerprintRange(tasks, blockRefs)
+				level.Debug(logger).Log("msg", "partitioned tasks", "regular", len(tasks), "partitioned", len(partitionedTasks))
+
 				err = w.processBlocksWithCallback(iterationCtx, tasks[0].Tenant, day, partitionedTasks)
 				if err != nil {
+					level.Error(logger).Log("msg", "processed with an error", "err", err)
 					// send error to error channel of each task
 					for _, t := range tasks {
 						t.ErrCh <- err
@@ -230,7 +233,7 @@ func (w *worker) running(ctx context.Context) error {
 			// close channels because everything is sent
 			for _, tasks := range tasksByDay {
 				for _, task := range tasks {
-					level.Debug(w.logger).Log("msg", "close task", "task", task.ID, "closed", task.closed.Load())
+					level.Debug(w.logger).Log("msg", "close task", "task", task.ID, "closed", task.closed)
 					task.Close()
 				}
 			}

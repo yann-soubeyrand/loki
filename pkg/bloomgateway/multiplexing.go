@@ -154,7 +154,7 @@ func (t Task) Close() {
 	// Multiple tasks can share the same ErrCh and ResCh.
 	// This is the case when a task initially spans across mutliple days and is
 	// split up into multiple tasks each only spanning one respective day.
-	if t.closed.CompareAndSwap(false, true) {
+	if t.closed != nil && t.closed.CompareAndSwap(false, true) {
 		close(t.ErrCh)
 		close(t.ResCh)
 	}
