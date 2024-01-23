@@ -3,6 +3,9 @@ package queue
 import (
 	"context"
 	"fmt"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"os"
 	"sync"
 	"time"
 
@@ -67,6 +70,7 @@ type RequestQueue struct {
 
 	metrics *Metrics
 	pool    *SlicePool[Request]
+	logger  log.Logger
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, limits Limits, metrics *Metrics) *RequestQueue {
@@ -75,6 +79,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, lim
 		connectedConsumers: atomic.NewInt32(0),
 		metrics:            metrics,
 		pool:               NewSlicePool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
+		logger:             log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
 	}
 
 	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
@@ -141,8 +146,10 @@ func (q *RequestQueue) ReleaseRequests(items []Request) {
 // The caller is responsible for returning the dequeued requests back to the
 // pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
+	level.Debug(q.logger).Log("msg", "DequeueMany before lock")
 	q.dequeuManyMtx.Lock()
 	defer q.dequeuManyMtx.Unlock()
+	level.Debug(q.logger).Log("msg", "DequeueMany after lock")
 
 	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
 	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
@@ -154,14 +161,17 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 	for {
 		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
 		if err != nil {
+			level.Debug(q.logger).Log("msg", "reached deadline, return the items", "len", len(items))
 			if err == context.DeadlineExceeded {
 				err = nil
 			}
 			return items, idx, err
 		}
 		items = append(items, item)
+		level.Debug(q.logger).Log("msg", "dequeued item, adding to the slice", "len", len(items))
 		idx = newIdx
 		if len(items) == maxItems {
+			level.Debug(q.logger).Log("msg", "reached maxItems, return the results", "maxItems", maxItems)
 			return items, idx, nil
 		}
 	}
@@ -171,8 +181,11 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 // By passing tenant index from previous call of this method, querier guarantees that it iterates over all tenants fairly.
 // If consumer finds that request from the tenant is already expired, it can get a request for the same tenant by using UserIndex.ReuseLastUser.
 func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, consumerID string) (Request, QueueIndex, error) {
+	logger := log.With(q.logger, "consumerID", consumerID)
+	level.Debug(logger).Log("msg", "Dequeue before lock")
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
+	level.Debug(logger).Log("msg", "Dequeue after lock")
 
 	querierWait := false
 
@@ -180,41 +193,55 @@ FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
 	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
+		level.Debug(logger).Log("msg", "Dequeue waiting for condition")
 		q.cond.Wait(ctx)
+		level.Debug(logger).Log("msg", "Dequeue condition happened")
 	}
 
 	if q.stopped {
+		level.Debug(logger).Log("msg", "queue stopped during dequeue")
 		return nil, last, ErrStopped
 	}
 
 	if err := ctx.Err(); err != nil {
+		level.Debug(logger).Log("msg", "context error during dequeue", "err", err)
 		return nil, last, err
 	}
 
 	for {
+		level.Debug(logger).Log("msg", "getNextQueueForConsumer before")
 		queue, tenant, idx := q.queues.getNextQueueForConsumer(last, consumerID)
+		level.Debug(logger).Log("msg", "got queue for the tenant", "tenant", tenant, "idx", idx)
 		last = idx
 		if queue == nil {
+			level.Debug(logger).Log("msg", "queue has been broken because queue is nil")
 			break
 		}
 
 		// Pick next request from the queue.
 		for {
+			level.Debug(logger).Log("msg", "picking next from the queue", "tenant", tenant, "idx", idx)
 			request := queue.Dequeue()
+			level.Debug(logger).Log("msg", "got request", "request", fmt.Sprintf("%+v", request))
 			if queue.Len() == 0 {
+				level.Debug(logger).Log("msg", "queue is empty, deleting it")
 				q.queues.deleteQueue(tenant)
+				level.Debug(logger).Log("msg", "queue has been deleted")
 			}
 
 			q.queues.perUserQueueLen.Dec(tenant)
 			q.metrics.queueLength.WithLabelValues(tenant).Dec()
 
+			level.Debug(logger).Log("msg", "Broadcast before")
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
+			level.Debug(logger).Log("msg", "Broadcast after")
 
 			return request, last, nil
 		}
 	}
 
+	level.Debug(logger).Log("msg", "set querierWait to true")
 	// There are no unexpired requests, so we can get back
 	// and wait for more requests.
 	querierWait = true
