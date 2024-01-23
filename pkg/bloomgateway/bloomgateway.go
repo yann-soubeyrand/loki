@@ -322,7 +322,8 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
-	level.Info(g.logger).Log("msg", "enqueue task", "task", task.ID, "closed", task.closed)
+	logger := log.With(g.logger, "origin_task_id", task.ID)
+	level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "closed", task.closed)
 	g.queue.Enqueue(tenantID, []string{}, task, func() {
 		// When enqueuing, we also add the task to the pending tasks
 		g.pendingTasks.Add(task.ID, task)
@@ -336,11 +337,13 @@ outer:
 	for {
 		select {
 		case <-ctx.Done():
+			level.Info(logger).Log("msg", "context done for the task", "task", task.ID, "err", ctx.Err())
 			// stop forwarding items from the sender to the receiver
 			// because it won't be consumed any more
 			task.Cancel()
 			return nil, errors.Wrap(ctx.Err(), "waiting for results")
 		case err := <-errCh:
+			level.Info(logger).Log("msg", "error for the task", "task", task.ID, "err", ctx.Err())
 			// stop forwarding items from the sender to the receiver
 			// because it won't be consumed any more
 			task.Cancel()
@@ -348,7 +351,7 @@ outer:
 		case res := <-resCh:
 			responses = append(responses, res)
 			// log line is helpful for debugging tests
-			level.Debug(g.logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
+			level.Debug(logger).Log("msg", "got partial result", "task", task.ID, "tenant", tenantID, "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len(), "progress", fmt.Sprintf("%d/%d", len(responses), requestCount))
 			// wait for all parts of the full response
 			if len(responses) == requestCount {
 				break outer
