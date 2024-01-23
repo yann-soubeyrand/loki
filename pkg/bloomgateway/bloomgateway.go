@@ -330,8 +330,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	})
 
 	requestCount := len(req.Refs)
-	responses := responsesPool.Get(requestCount)
-	defer responsesPool.Put(responses)
+	responses := make([]v1.Output, 0, requestCount)
 
 outer:
 	for {
@@ -370,7 +369,7 @@ outer:
 	g.metrics.addUnfilteredCount(numChunksUnfiltered)
 	g.metrics.addFilteredCount(len(req.Refs))
 
-	level.Debug(g.logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
+	level.Debug(logger).Log("msg", "return filtered chunk refs", "unfiltered", numChunksUnfiltered, "filtered", len(req.Refs))
 	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 }
 
