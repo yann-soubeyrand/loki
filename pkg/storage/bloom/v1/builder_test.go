@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"errors"
+	"github.com/prometheus/common/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -192,4 +193,72 @@ func TestMergeBuilder(t *testing.T) {
 		NewSliceIter[*SeriesWithBloom](PointerSlice(data)),
 		querier,
 	)
+}
+func TestBlockChecksums(t *testing.T) {
+	testCases := []struct {
+		name         string
+		fingerprint1 model.Fingerprint
+		fingerprint2 model.Fingerprint
+		timestamp1   model.Time
+		timestamp2   model.Time
+		expectEqual  bool
+	}{
+		{"DifferentFPsSameTs", 0x0000, 0x1111, 0, 0, false},
+		{"SameFPsDifferentTs", 0xffff, 0xffff, 0, 123400, false},
+		{"DifferentFPsDifferentTs", 0x0000, 0x11aa, 0, 10000, false},
+		{"SameFPsSameTs", 0xffff, 0xffff, 0, 0, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			tmpDir2 := t.TempDir()
+			writer := NewDirectoryBlockWriter(tmpDir)
+			writer2 := NewDirectoryBlockWriter(tmpDir2)
+
+			schema := Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 10,
+				nGramSkip:   2,
+			}
+
+			builder, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer,
+			)
+			require.Nil(t, err)
+
+			builder2, err := NewBlockBuilder(
+				BlockOptions{
+					schema:         schema,
+					SeriesPageSize: 100,
+					BloomPageSize:  10 << 10,
+				},
+				writer2,
+			)
+			require.Nil(t, err)
+
+			data1, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint1, tc.timestamp1, 10000)
+			data2, _ := mkBasicSeriesWithBlooms(4, 100, 0, tc.fingerprint2, tc.timestamp2, 10000)
+
+			itr1 := NewSliceIter[SeriesWithBloom](data1)
+			checksum1, err := builder.BuildFrom(itr1)
+			require.NoError(t, err)
+
+			itr2 := NewSliceIter[SeriesWithBloom](data2)
+			checksum2, err := builder2.BuildFrom(itr2)
+			require.NoError(t, err)
+
+			if tc.expectEqual {
+				require.Equal(t, checksum1, checksum2, "checksums should be equal")
+			} else {
+				require.NotEqual(t, checksum1, checksum2, "checksums should not be equal")
+			}
+		})
+	}
 }

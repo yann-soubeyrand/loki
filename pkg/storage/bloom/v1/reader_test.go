@@ -310,14 +310,16 @@ func TestReadingAllLocalFilesAndFigureOutTheIterators(t *testing.T) {
 		blockIters[i] = NewPeekingIterWithIndex[*SeriesWithBloom](blockQuerier, i)
 	}
 
-	for _, itr := range blockIters {
+	for outer, itr := range blockIters {
 		for itr.Next() {
 			x := itr.At()
 			//fmt.Printf("%d - %s\n", x.Series.Chunks.Len(), x.Series.Fingerprint)
-			for i, chk := range x.Series.Chunks {
-				if i > 0 {
-					if x.Series.Chunks[i-1].End > chk.Start {
-						fmt.Printf("%s - %s\n", chk.Start.String(), chk.End.String())
+			if outer == 4 {
+				for i, chk := range x.Series.Chunks {
+					if i > 0 {
+						if x.Series.Chunks[i-1].Start > chk.Start {
+							fmt.Printf("%d-%d: %s - %s, %s - %s\n", outer, i, x.Series.Chunks[i-1].Start, x.Series.Chunks[i-1].End, chk.Start.String(), chk.End.String())
+						}
 					}
 				}
 			}

@@ -28,6 +28,7 @@ type BlockBuilder struct {
 
 	index  *IndexBuilder
 	blooms *BloomBlockBuilder
+	hash   uint32
 }
 
 func NewBlockOptions(NGramLength, NGramSkip uint64) BlockOptions {
@@ -194,6 +195,8 @@ func (b *BloomBlockBuilder) flushPage() error {
 		b.opts.schema.CompressorPool(),
 		crc32Hash,
 	)
+	fmt.Printf("flushPage Hash is %d\n", crc32Hash.Sum32())
+
 	if err != nil {
 		return errors.Wrap(err, "writing bloom page")
 	}
@@ -265,6 +268,7 @@ func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32
 	// replace the encoded series page with the compressed one
 	w.enc.B = buf.Bytes()
 	w.enc.PutHash(crc32Hash)
+	fmt.Printf("writePage Hash is %d\n", crc32Hash.Sum32())
 
 	// write the page
 	if _, err := writer.Write(w.enc.Get()); err != nil {
