@@ -146,10 +146,14 @@ func (q *RequestQueue) ReleaseRequests(items []Request) {
 // The caller is responsible for returning the dequeued requests back to the
 // pool by calling ReleaseRequests(items).
 func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consumerID string, maxItems int, maxWait time.Duration) ([]Request, QueueIndex, error) {
-	level.Debug(q.logger).Log("msg", "DequeueMany before lock")
+	logger := log.With(q.logger, "consumerID", consumerID)
+	level.Debug(logger).Log("msg", "DequeueMany before lock")
 	q.dequeuManyMtx.Lock()
 	defer q.dequeuManyMtx.Unlock()
-	level.Debug(q.logger).Log("msg", "DequeueMany after lock")
+	defer func() {
+		level.Debug(logger).Log("msg", "leaving DequeueMany")
+	}()
+	level.Debug(logger).Log("msg", "DequeueMany after lock")
 
 	// create a context for dequeuing with a max time we want to wait to fulfill the desired maxItems
 	dequeueCtx, cancel := context.WithTimeout(ctx, maxWait)
@@ -161,17 +165,17 @@ func (q *RequestQueue) DequeueMany(ctx context.Context, last QueueIndex, consume
 	for {
 		item, newIdx, err := q.Dequeue(dequeueCtx, last, consumerID)
 		if err != nil {
-			level.Debug(q.logger).Log("msg", "reached deadline, return the items", "len", len(items))
+			level.Debug(logger).Log("msg", "reached deadline, return the items", "len", len(items))
 			if err == context.DeadlineExceeded {
 				err = nil
 			}
 			return items, idx, err
 		}
 		items = append(items, item)
-		level.Debug(q.logger).Log("msg", "dequeued item, adding to the slice", "len", len(items))
+		level.Debug(logger).Log("msg", "dequeued item, adding to the slice", "len", len(items))
 		idx = newIdx
 		if len(items) == maxItems {
-			level.Debug(q.logger).Log("msg", "reached maxItems, return the results", "maxItems", maxItems)
+			level.Debug(logger).Log("msg", "reached maxItems, return the results", "maxItems", maxItems)
 			return items, idx, nil
 		}
 	}
