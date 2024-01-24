@@ -88,28 +88,38 @@ func (s *Shipper) Fetch(ctx context.Context, tenantID string, blocks []BlockRef,
 	for {
 		select {
 		case <-ctx.Done():
+			level.Debug(s.logger).Log("msg", "context is done while downloading block", "err", ctx.Err())
 			return fmt.Errorf("failed to fetch blocks: %w", ctx.Err())
 		case err := <-errCh:
+			level.Debug(s.logger).Log("msg", "received error while downloading block", "err", err)
 			return fmt.Errorf("failed to fetch blocks: %w", err)
 		case result := <-resCh:
-			err := runCallback(callback, result)
+			level.Debug(s.logger).Log("msg", "received downloaded block", "block", result.BlockPath)
+			err := runCallback(callback, result, s.logger)
+			level.Debug(s.logger).Log("msg", "callback for the block has been completed", "block", result.BlockPath, "err", err)
 			if err != nil {
 				return err
 			}
 			remaining--
+			level.Debug(s.logger).Log("msg", "remaning ", "remaning", remaining)
 			if remaining == 0 {
+				level.Debug(s.logger).Log("msg", "remaning is 0 , exiting")
 				return nil
 			}
 		}
 	}
 }
 
-func runCallback(callback ForEachBlockCallback, block blockWithQuerier) error {
+func runCallback(callback ForEachBlockCallback, block blockWithQuerier, logger log.Logger) error {
 	defer func(b blockWithQuerier) {
+		level.Debug(logger).Log("msg", "closing block", "block", b.BlockPath)
 		_ = b.Close()
+		level.Debug(logger).Log("msg", "the block has been closed", "block", b.BlockPath)
 	}(block)
 
+	level.Debug(logger).Log("msg", "start running callback", "block", block.BlockPath)
 	err := callback(block.closableBlockQuerier.BlockQuerier, block.MinFingerprint, block.MaxFingerprint)
+	level.Debug(logger).Log("msg", "end running callback", "block", block.BlockPath)
 	if err != nil {
 		return fmt.Errorf("error running callback function for block %s err: %w", block.BlockPath, err)
 	}

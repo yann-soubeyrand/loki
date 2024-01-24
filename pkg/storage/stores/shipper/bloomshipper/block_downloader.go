@@ -137,9 +137,13 @@ func (d *blockDownloader) runDownloadWorker(workerID string) {
 
 		result, err := d.strategy.downloadBlock(task, logger)
 		if err != nil {
+			level.Error(logger).Log("msg", "sending error", "task", task.block.BlockPath, "err", err)
 			task.ErrCh <- err
+			level.Error(logger).Log("msg", "error has been sent", "task", task.block.BlockPath, "err", err)
 		} else {
+			level.Error(logger).Log("msg", "sending results", "task", task.block.BlockPath, "err", err)
 			task.ResCh <- result
+			level.Error(logger).Log("msg", "result has been sent", "task", task.block.BlockPath, "err", err)
 		}
 	}
 }

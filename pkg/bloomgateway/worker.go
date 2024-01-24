@@ -258,11 +258,21 @@ func (w *worker) stopping(err error) error {
 }
 
 func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, day time.Time, partitionedTasks []boundedTasks) error {
+	logger := log.With(w.logger, "worker", w.id)
+	level.Debug(logger).Log("msg", "processBlocksWithCallback")
+	defer func() {
+		level.Debug(logger).Log("msg", "leaving processBlocksWithCallback")
+	}()
 	blockRefs := make([]bloomshipper.BlockRef, 0, len(partitionedTasks))
 	for _, pt := range partitionedTasks {
 		blockRefs = append(blockRefs, pt.blockRef)
 	}
 	return w.shipper.Fetch(ctx, tenant, blockRefs, func(bq *v1.BlockQuerier, minFp, maxFp uint64) error {
+		logger := log.With(w.logger, "worker", w.id)
+		level.Debug(logger).Log("msg", "inside callback")
+		defer func() {
+			level.Debug(logger).Log("msg", "leaving callback")
+		}()
 		for _, pt := range partitionedTasks {
 			if pt.blockRef.MinFingerprint == minFp && pt.blockRef.MaxFingerprint == maxFp {
 				return w.processBlock(ctx, bq, day, pt.tasks)
@@ -273,30 +283,44 @@ func (w *worker) processBlocksWithCallback(ctx context.Context, tenant string, d
 }
 
 func (w *worker) processBlock(ctx context.Context, blockQuerier *v1.BlockQuerier, day time.Time, tasks []Task) error {
+	logger := log.With(w.logger, "worker", w.id)
+	level.Debug(logger).Log("msg", "start processBlock")
+	defer func() {
+		level.Debug(logger).Log("msg", "end processBlock")
+	}()
+
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
 	}
 
+	level.Debug(logger).Log("msg", "creating tokenizer")
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
+	level.Debug(logger).Log("msg", "creating taskMergeIterator")
 	it := newTaskMergeIterator(day, tokenizer, tasks...)
+	level.Debug(logger).Log("msg", "Fuse")
 	fq := blockQuerier.Fuse([]v1.PeekingIterator[v1.Request]{it})
 
 	if ctx.Err() != nil {
+		level.Debug(logger).Log("msg", "context error", "err", err)
 		return ctx.Err()
 	}
 
 	for _, t := range tasks {
 		if t.Err() != nil {
+			level.Debug(logger).Log("msg", "task context error", "task", t.ID, "err", t.Err())
 			return t.ctx.Err()
 		}
 	}
 
 	start := time.Now()
+	level.Debug(logger).Log("msg", "before fq.Run()")
 	err = fq.Run()
+	level.Debug(logger).Log("msg", "after fq.Run()")
 	duration := time.Since(start).Seconds()
 
 	if err != nil {
+		level.Debug(logger).Log("msg", "completed with error", "err", err)
 		w.metrics.bloomQueryLatency.WithLabelValues(w.id, "failure").Observe(duration)
 		return err
 	}
