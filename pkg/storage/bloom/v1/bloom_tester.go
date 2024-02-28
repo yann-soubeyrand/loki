@@ -86,7 +86,7 @@ func simpleFilterToBloomTest(b NGramBuilder, filter syntax.LineFilter) BloomTest
 }
 
 type matcherFilterWrapper struct {
-	filter log.MatcherFilter
+	filter log.Matcher
 }
 
 // Matches implements the BloomTest interface
@@ -184,13 +184,13 @@ func (b stringMatcherFilter) ToStage() log.Stage {
 	panic("implement me")
 }
 
-// Matches implements the log.MatcherFilter interface
+// Matches implements the log.Matcher interface
 func (b stringMatcherFilter) Matches(test log.Checker) bool {
 	return b.test.Matches(test.(filter.Checker))
 }
 
 func newStringFilterFunc(b NGramBuilder) log.NewMatcherFilterFunc {
-	return func(match []byte, caseInsensitive bool) log.MatcherFilter {
+	return func(match []byte, caseInsensitive bool) log.Matcher {
 		return stringMatcherFilter{
 			test: newStringTest(b, string(match)),
 		}
