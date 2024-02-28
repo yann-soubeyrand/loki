@@ -57,31 +57,31 @@ func (e existsFilter) Matches(_ Checker) bool { return true }
 // ExistsFilter is a filter that returns and matches when a line has any characters.
 var ExistsFilter = existsFilter{}
 
-type notFilter struct {
-	Filterer
+type notMatcher struct {
+	Matcher
 }
 
-func (n notFilter) Filter(line []byte) bool {
-	return !n.Filterer.Filter(line)
+func (n notMatcher) Matches(test Checker) bool {
+	return !n.Matcher.Matches(test)
 }
 
-// NewNotFilter creates a new filter which matches only if the base filter doesn't match.
+// NewNotMatcher creates a new matcher which matches only if the base filter doesn't match.
 // If the base filter is a `or` it will recursively simplify with `and` operations.
-func NewNotFilter(base Filterer) Filterer {
+func NewNotMatcher(base Matcher) Matcher {
 	// not(a|b) = not(a) and not(b) , and operation can't benefit from this optimization because both legs always needs to be executed.
-	if or, ok := base.(orFilter); ok {
-		return NewAndFilter(NewNotFilter(or.left), NewNotFilter(or.right))
+	if or, ok := base.(orMatcher); ok {
+		return NewAndFilter(NewNotMatcher(or.left), NewNotMatcher(or.right))
 	}
-	return notFilter{Filterer: base}
+	return notMatcher{Matcher: base}
 }
 
 type andFilter struct {
-	left  Filterer
-	right Filterer
+	left  Matcher
+	right Matcher
 }
 
 // NewAndFilter creates a new filter which matches only if left and right matches.
-func NewAndFilter(left Filterer, right Filterer) Filterer {
+func NewAndFilter(left Matcher, right Matcher) Matcher {
 	// Make sure we take care of panics in case a nil or noop filter is passed.
 	if right == nil || right == TrueFilter {
 		return left
@@ -97,16 +97,8 @@ func NewAndFilter(left Filterer, right Filterer) Filterer {
 	}
 }
 
-func (a andFilter) Filter(line []byte) bool {
-	return a.left.Filter(line) && a.right.Filter(line)
-}
-
-func (a andFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+func (a andFilter) Matches(test Checker) bool {
+	return a.left.Matches(test) && a.right.Matches(test)
 }
 
 type andFilters struct {
@@ -219,6 +211,66 @@ func ChainOrMatchers(curr, new Matcher) Matcher {
 	return newOrMatcher(curr, new)
 }
 
+type orFilter struct {
+	left  Filterer
+	right Filterer
+}
+
+func (o orFilter) Filter(line []byte) bool {
+	return o.left.Filter(line) || o.right.Filter(line)
+}
+
+func (o orFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, o.Filter(line)
+		},
+	}
+}
+
+// newOrFilter creates a new filter which matches only if left or right matches.
+func newOrFilter(left Filterer, right Filterer) Filterer {
+	if left == nil || left == TrueFilter {
+		return right
+	}
+
+	if right == nil || right == TrueFilter {
+		return left
+	}
+
+	return orFilter{
+		left:  left,
+		right: right,
+	}
+}
+
+func ChainOrFilter(curr, new Filterer) Filterer {
+	if curr == nil {
+		return new
+	}
+	return newOrFilter(curr, new)
+}
+
+type notFilter struct {
+	Filterer
+}
+
+func NewNotFilter(filter Filterer) Filterer {
+	return notFilter{Filterer: filter}
+}
+
+func (n notFilter) Filter(line []byte) bool {
+	return !n.Filterer.Filter(line)
+}
+
+func (n notFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, n.Filter(line)
+		},
+	}
+}
+
 type regexpFilter struct {
 	*regexp.Regexp
 
@@ -278,7 +330,7 @@ func (l equalFilter) ToStage() Stage {
 
 // Matches implements Matcher
 func (l equalFilter) Matches(test Checker) bool {
-	return test.Test(l.match)
+	return test.Test(l.match, l.caseInsensitive)
 }
 
 func (l equalFilter) String() string {
@@ -355,7 +407,7 @@ func (l containsFilter) ToStage() Stage {
 
 // Matches implements Matcher
 func (l containsFilter) Matches(test Checker) bool {
-	return test.Test(l.match)
+	return test.Test(l.match, l.caseInsensitive)
 }
 
 func (l containsFilter) String() string {
@@ -415,7 +467,7 @@ func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
 	case labels.MatchEqual:
 		return matcherToFilter(newContainsFilter([]byte(match), false)), nil
 	case labels.MatchNotEqual:
-		return NewNotFilter(matcherToFilter(newContainsFilter([]byte(match), false))), nil
+		return matcherToFilter(NewNotMatcher(newContainsFilter([]byte(match), false))), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -431,7 +483,7 @@ func NewLabelFilter(match string, mt labels.MatchType) (Filterer, error) {
 	case labels.MatchEqual:
 		return matcherToFilter(newEqualFilter([]byte(match), false)), nil
 	case labels.MatchNotEqual:
-		return NewNotFilter(matcherToFilter(newEqualFilter([]byte(match), false))), nil
+		return matcherToFilter(NewNotMatcher(newEqualFilter([]byte(match), false))), nil
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -459,11 +511,10 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 		return newRegexpFilter(regex, re, match)
 	}
 
-	filter := matcherToFilter(matcher)
-	if match {
-		return filter, nil
+	if !match {
+		matcher = NewNotMatcher(matcher)
 	}
-	return NewNotFilter(filter), nil
+	return matcherToFilter(matcher), nil
 }
 
 type matcherWrapper struct {
@@ -471,16 +522,27 @@ type matcherWrapper struct {
 	line []byte
 }
 
-func (m matcherWrapper) Test(line []byte) bool {
-	return bytes.Equal(m.line, line)
+func (m *matcherWrapper) Test(match []byte, caseInsensitive bool) bool {
+	if eqMatcher, ok := m.Matcher.(*equalFilter); ok {
+		return eqMatcher.Filter(m.line)
+	}
+	if containsMatcher, ok := m.Matcher.(*containsFilter); ok {
+		return containsMatcher.Filter(m.line)
+	}
+
+	toMatch := match
+	if caseInsensitive {
+		toMatch = bytes.ToLower(toMatch)
+	}
+	return bytes.Contains(toMatch, m.line)
 }
 
-func (m matcherWrapper) Filter(line []byte) bool {
+func (m *matcherWrapper) Filter(line []byte) bool {
 	m.line = line
 	return m.Matches(m)
 }
 
-func (m matcherWrapper) ToStage() Stage {
+func (m *matcherWrapper) ToStage() Stage {
 	return StageFunc{
 		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 			return line, m.Filter(line)
@@ -489,13 +551,13 @@ func (m matcherWrapper) ToStage() Stage {
 }
 
 func matcherToFilter(m Matcher) Filterer {
-	return matcherWrapper{
+	return &matcherWrapper{
 		Matcher: m,
 	}
 }
 
 type Checker interface {
-	Test(line []byte) bool
+	Test(line []byte, caseInsensitive bool) bool
 }
 
 type Matcher interface {

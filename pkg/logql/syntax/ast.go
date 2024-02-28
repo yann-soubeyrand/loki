@@ -497,7 +497,6 @@ func newOrFilter(f *LineFilterExpr) (log.Filterer, error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO: Remove NewMatcherFilterWrapper
 		orFilter = log.ChainOrFilter(orFilter, filter)
 	}
 
