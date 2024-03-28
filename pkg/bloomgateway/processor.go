@@ -76,11 +76,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		return err
 	}
 
-	blocksRefs, err := bloomshipper.BlocksForMetas(metas, interval, series)
-	if err != nil {
-		return err
-	}
-
+	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, series)
 	data := partitionTasks(tasks, blocksRefs)
 
 	refs := make([]bloomshipper.BlockRef, 0, len(data))

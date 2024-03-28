@@ -57,8 +57,7 @@ func TestBloomShipper_findBlocks(t *testing.T) {
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			ref := createBlockRef(data.minFingerprint, data.maxFingerprint, data.startTimestamp, data.endTimestamp)
-			blocks, err := BlocksForMetas([]Meta{{Blocks: []BlockRef{ref}}}, NewInterval(300, 400), []model.Fingerprint{100, 200})
-			require.NoError(t, err)
+			blocks := BlocksForMetas([]Meta{{Blocks: []BlockRef{ref}}}, NewInterval(300, 400), []model.Fingerprint{100, 200})
 			if data.filtered {
 				require.Empty(t, blocks)
 				return
@@ -76,19 +75,7 @@ func TestBloomShipper_BlocksForMetas(t *testing.T) {
 		interval     Interval
 		fingerprints []model.Fingerprint
 		expectedRefs []BlockRef
-		expectErr    bool
 	}{
-		{
-			name: "missing fps",
-			metas: []Meta{
-				{
-					Blocks: []BlockRef{createBlockRef(100, 200, 300, 400)},
-				},
-			},
-			interval:     NewInterval(300, 400),
-			fingerprints: []model.Fingerprint{100, 200, 300},
-			expectErr:    true,
-		},
 		{
 			name: "one block for all fp",
 			metas: []Meta{
@@ -153,12 +140,7 @@ func TestBloomShipper_BlocksForMetas(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			blocks, err := BlocksForMetas(tc.metas, tc.interval, tc.fingerprints)
-			if tc.expectErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			blocks := BlocksForMetas(tc.metas, tc.interval, tc.fingerprints)
 			require.Len(t, blocks, len(tc.expectedRefs))
 			require.ElementsMatch(t, tc.expectedRefs, blocks)
 		})

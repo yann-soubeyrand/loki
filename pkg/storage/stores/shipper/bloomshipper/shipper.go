@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/slices"
 	"sort"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -55,49 +56,34 @@ func (s *Shipper) Stop() {
 	s.store.Stop()
 }
 
-// BlocksForMetas returns up to one block from the given metas for each fingerprints
-func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Fingerprint) (refs []BlockRef, err error) {
+// BlocksForMetas returns up to all block from the given metas for each fingerprints
+func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Fingerprint) []BlockRef {
 	if len(fingerprints) == 0 {
-		return nil, nil
+		return nil
 	}
 
-	// We use these two maps to make sure we only return one block per fingerprint
-	missingFPs := make(map[model.Fingerprint]struct{}, len(fingerprints))
-	for _, fp := range fingerprints {
-		missingFPs[fp] = struct{}{}
-	}
-	blocks := make(map[BlockRef]struct{}, len(fingerprints))
-
+	refs := make([]BlockRef, 0, len(fingerprints))
 	for _, meta := range metas {
 		for _, block := range meta.Blocks {
-			// Break if we already have a block for each FP
-			if len(missingFPs) == 0 {
-				break
-			}
-
 			// Filter out blocks that are outside the requested interval
 			if !interval.Overlaps(block.Interval()) {
 				continue
 			}
 
-			// Check if this block is for any of the pending fingerprints
-			for fp := range missingFPs {
-				if block.Bounds.Match(fp) {
-					delete(missingFPs, fp)
-					blocks[block] = struct{}{}
-				}
+			// Skip blocks that do not match any of the fingerprints
+			if matchesFP := slices.ContainsFunc(fingerprints, func(fp model.Fingerprint) bool {
+				return block.Bounds.Match(fp)
+			}); !matchesFP {
+				continue
 			}
-		}
-	}
 
-	refs = make([]BlockRef, 0, len(blocks))
-	for ref := range blocks {
-		refs = append(refs, ref)
+			refs = append(refs, block)
+		}
 	}
 
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].Bounds.Less(refs[j].Bounds)
 	})
 
-	return refs, nil
+	return refs
 }
