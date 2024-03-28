@@ -2,15 +2,14 @@ package bloomgateway
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-
-	"github.com/grafana/dskit/concurrency"
+	"github.com/prometheus/common/model"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -71,7 +70,15 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 
 	start := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
-	level.Debug(p.logger).Log("msg", "fetched metas", "day", day.String(), "count", len(metas), "duration", time.Since(start), "series", len(series), "err", err)
+	duration := time.Since(start)
+	level.Debug(p.logger).Log("msg", "fetched metas", "day", day.String(), "count", len(metas), "duration", duration, "series", len(series), "err", err)
+
+	for _, t := range tasks {
+		stats := FromContext(t.ctx)
+		stats.AddMetasProcessed(len(metas))
+		stats.AddMetasFetchTime(duration)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -96,14 +103,11 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		// the underlying bloom []byte outside of iteration
 		bloomshipper.WithPool(true),
 	)
-	duration := time.Since(start)
+	duration = time.Since(start)
 	level.Debug(p.logger).Log("msg", "fetched blocks", "blocks", len(refs), "metas", len(metas), "series", len(series), "duration", duration, "err", err)
 
 	for _, t := range tasks {
-		stats := FromContext(t.ctx)
-		stats.AddMetasProcessed(len(metas))
-		stats.AddMetasFetchTime(duration)
-		stats.AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddBlocksFetchTime(duration)
 	}
 
 	if err != nil {

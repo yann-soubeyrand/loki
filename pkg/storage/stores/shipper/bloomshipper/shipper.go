@@ -3,9 +3,10 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
+	"sort"
+
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
-	"sort"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 )
