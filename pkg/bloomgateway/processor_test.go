@@ -137,7 +137,12 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		var series []model.Fingerprint
+		for _, s := range swb.series {
+			series = append(series, model.Fingerprint(s.Fingerprint))
+		}
+
+		err := p.run(ctx, tasks, series)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
@@ -186,7 +191,12 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		var series []model.Fingerprint
+		for _, s := range swb.series {
+			series = append(series, model.Fingerprint(s.Fingerprint))
+		}
+
+		err := p.run(ctx, tasks, series)
 		wg.Wait()
 		require.Errorf(t, err, "store failed")
 		require.Equal(t, int64(0), results.Load())

@@ -155,12 +155,29 @@ func TestBloomStore_ResolveMetas(t *testing.T) {
 	// outside of interval, outside of bounds
 	_, _ = createMetaInStorage(store, "tenant", parseTime("2024-02-11 00:00"), 0x00010000, 0x0001ffff)
 
-	t.Run("tenant matches", func(t *testing.T) {
+	t.Run("tenant matches by keyspace", func(t *testing.T) {
 		ctx := context.Background()
 		params := MetaSearchParams{
-			"tenant",
-			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
-			v1.NewBounds(0x00000000, 0x0000ffff),
+			TenantID: "tenant",
+			Interval: NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			Keyspace: v1.NewBounds(0x00000000, 0x0000ffff),
+		}
+
+		refs, fetchers, err := store.ResolveMetas(ctx, params)
+		require.NoError(t, err)
+		require.Len(t, refs, 2)
+		require.Len(t, fetchers, 2)
+
+		require.Equal(t, [][]MetaRef{{m1.MetaRef}, {m2.MetaRef}}, refs)
+	})
+
+	t.Run("tenant matches by fingerprints", func(t *testing.T) {
+		ctx := context.Background()
+		params := MetaSearchParams{
+			TenantID:     "tenant",
+			Interval:     NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			Fingerprints: []model.Fingerprint{0x00000001, 0x00000002},
+			Keyspace:     v1.NewBounds(0x00010000, 0x0001ffff), // This should be ignored
 		}
 
 		refs, fetchers, err := store.ResolveMetas(ctx, params)
@@ -174,9 +191,9 @@ func TestBloomStore_ResolveMetas(t *testing.T) {
 	t.Run("tenant does not match", func(t *testing.T) {
 		ctx := context.Background()
 		params := MetaSearchParams{
-			"other",
-			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
-			v1.NewBounds(0x00000000, 0x0000ffff),
+			TenantID: "other",
+			Interval: NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			Keyspace: v1.NewBounds(0x00000000, 0x0000ffff),
 		}
 
 		refs, fetchers, err := store.ResolveMetas(ctx, params)
@@ -214,9 +231,9 @@ func TestBloomStore_FetchMetas(t *testing.T) {
 	t.Run("tenant matches", func(t *testing.T) {
 		ctx := context.Background()
 		params := MetaSearchParams{
-			"tenant",
-			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
-			v1.NewBounds(0x00000000, 0x0000ffff),
+			TenantID: "tenant",
+			Interval: NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			Keyspace: v1.NewBounds(0x00000000, 0x0000ffff),
 		}
 
 		metas, err := store.FetchMetas(ctx, params)
@@ -229,9 +246,9 @@ func TestBloomStore_FetchMetas(t *testing.T) {
 	t.Run("tenant does not match", func(t *testing.T) {
 		ctx := context.Background()
 		params := MetaSearchParams{
-			"other",
-			NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
-			v1.NewBounds(0x00000000, 0x0000ffff),
+			TenantID: "other",
+			Interval: NewInterval(parseTime("2024-01-20 00:00"), parseTime("2024-02-10 00:00")),
+			Keyspace: v1.NewBounds(0x00000000, 0x0000ffff),
 		}
 
 		metas, err := store.FetchMetas(ctx, params)

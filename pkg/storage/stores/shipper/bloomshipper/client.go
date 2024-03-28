@@ -167,7 +167,13 @@ func MetaRefFrom(
 type MetaSearchParams struct {
 	TenantID string
 	Interval Interval
+
+	// TODO(salvacorts): Split this into two structs. And implement two ResolveMetas: ResolveMetasByFingerprints and ResolveMetasByKeyspace
+	// Keyspace is the range of fingerprints to search for
+	// Note that if Fingerprints is non-empty, this is ignored
 	Keyspace v1.FingerprintBounds
+	// Fingerprints is a list of fingerprints to search for
+	Fingerprints []model.Fingerprint
 }
 
 type MetaClient interface {

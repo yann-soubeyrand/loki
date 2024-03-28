@@ -12,7 +12,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
@@ -92,7 +91,7 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
-		var mb v1.MultiFingerprintBounds
+		var series []model.Fingerprint
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -106,12 +105,16 @@ func (w *worker) running(_ context.Context) error {
 			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
 			tasks = append(tasks, task)
 
-			first, last := getFirstLast(task.series)
-			mb = mb.Union(v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)))
+			if cap(series) == 0 {
+				series = make([]model.Fingerprint, 0, len(task.series))
+			}
+			for _, s := range task.series {
+				series = append(series, model.Fingerprint(s.Fingerprint))
+			}
 		}
 
 		start = time.Now()
-		err = p.runWithBounds(taskCtx, tasks, mb)
+		err = p.run(taskCtx, tasks, series)
 
 		if err != nil {
 			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())

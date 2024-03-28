@@ -60,6 +60,10 @@ type bloomStoreEntry struct {
 
 // ResolveMetas implements store.
 func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
+	if len(params.Fingerprints) > 0 && !slices.IsSorted(params.Fingerprints) {
+		slices.Sort(params.Fingerprints)
+	}
+
 	var refs []MetaRef
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
@@ -75,28 +79,20 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 		if err != nil {
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
 		}
-		for _, object := range list {
-			metaRef, err := b.ParseMetaKey(key(object.Key))
 
+		var tableRefs []MetaRef
+		if len(params.Fingerprints) > 0 {
+			tableRefs, err = b.resolveMetasByFingerprints(list, params.Fingerprints)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, fmt.Errorf("error resolving metas by fingerprints: %w", err)
 			}
-
-			// LIST calls return keys in lexicographic order.
-			// Since fingerprints are the first part of the path,
-			// we can stop iterating once we find an item greater
-			// than the keyspace we're looking for
-			if params.Keyspace.Cmp(metaRef.Bounds.Min) == v1.After {
-				break
+		} else {
+			tableRefs, err = b.resolveMetasByKeyspace(list, params.Keyspace)
+			if err != nil {
+				return nil, nil, fmt.Errorf("error resolving metas by keyspace: %w", err)
 			}
-
-			// Only check keyspace for now, because we don't have start/end timestamps in the refs
-			if !params.Keyspace.Overlaps(metaRef.Bounds) {
-				continue
-			}
-
-			refs = append(refs, metaRef)
 		}
+		refs = append(refs, tableRefs...)
 	}
 
 	// return empty metaRefs/fetchers if there are no refs
@@ -105,6 +101,64 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	}
 
 	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
+}
+
+func (b *bloomStoreEntry) resolveMetasByKeyspace(objects []client.StorageObject, keyspace v1.FingerprintBounds) ([]MetaRef, error) {
+	var refs []MetaRef
+	for _, object := range objects {
+		metaRef, err := b.ParseMetaKey(key(object.Key))
+		if err != nil {
+			return nil, err
+		}
+
+		// LIST calls return keys in lexicographic order.
+		// Since fingerprints are the first part of the path,
+		// we can stop iterating once we find an item greater
+		// than the keyspace we're looking for
+		if keyspace.Cmp(metaRef.Bounds.Min) == v1.After {
+			break
+		}
+
+		// Only check keyspace for now, because we don't have start/end timestamps in the refs
+		if !keyspace.Overlaps(metaRef.Bounds) {
+			continue
+		}
+
+		refs = append(refs, metaRef)
+	}
+
+	return refs, nil
+}
+
+func (b *bloomStoreEntry) resolveMetasByFingerprints(objects []client.StorageObject, fingerprints []model.Fingerprint) ([]MetaRef, error) {
+	maxSearchFp := fingerprints[len(fingerprints)-1]
+	var refs []MetaRef
+
+	for _, object := range objects {
+		metaRef, err := b.ParseMetaKey(key(object.Key))
+		if err != nil {
+			return nil, err
+		}
+
+		// LIST calls return keys in lexicographic order.
+		// Since fingerprints are the first part of the path,
+		// we can stop iterating once we find an item greater
+		// than the max FP we're looking for
+		if metaRef.Bounds.Min > maxSearchFp {
+			break
+		}
+
+		// Filter out metas that are outside the requested fingerprints
+		if matchesFp := slices.ContainsFunc(fingerprints, func(f model.Fingerprint) bool {
+			return metaRef.Bounds.Match(f)
+		}); !matchesFp {
+			continue
+		}
+
+		refs = append(refs, metaRef)
+	}
+
+	return refs, nil
 }
 
 // FetchMetas implements store.

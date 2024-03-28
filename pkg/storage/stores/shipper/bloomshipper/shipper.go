@@ -3,6 +3,7 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"sort"
 
 	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
@@ -54,38 +55,44 @@ func (s *Shipper) Stop() {
 	s.store.Stop()
 }
 
-// BlocksForMetas returns all the blocks from all the metas listed that are within the requested bounds
-func BlocksForMetas(metas []Meta, interval Interval, keyspaces []v1.FingerprintBounds) (refs []BlockRef) {
+// BlocksForMetas returns up to one block from the given metas for each fingerprints
+func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Fingerprint) (refs []BlockRef, err error) {
+	// We use these two maps to make sure we only return one block per fingerprint
+	missingFPs := make(map[model.Fingerprint]struct{}, len(fingerprints))
+	for _, fp := range fingerprints {
+		missingFPs[fp] = struct{}{}
+	}
+	blocks := make(map[BlockRef]struct{}, len(fingerprints))
+
 	for _, meta := range metas {
 		for _, block := range meta.Blocks {
-			if !isOutsideRange(block, interval, keyspaces) {
-				refs = append(refs, block)
+			// Filter out blocks that are outside the requested interval
+			if !interval.Overlaps(block.Interval()) {
+				continue
+			}
+
+			// Check if this block is for any of the pending fingerprints
+			for fp := range missingFPs {
+				if block.Bounds.Match(fp) {
+					delete(missingFPs, fp)
+					blocks[block] = struct{}{}
+				}
 			}
 		}
+	}
+
+	if len(missingFPs) > 0 {
+		return nil, fmt.Errorf("missing blocks for %d fingerprints", len(missingFPs))
+	}
+
+	refs = make([]BlockRef, 0, len(blocks))
+	for ref := range blocks {
+		refs = append(refs, ref)
 	}
 
 	sort.Slice(refs, func(i, j int) bool {
 		return refs[i].Bounds.Less(refs[j].Bounds)
 	})
 
-	return refs
-}
-
-// isOutsideRange tests if a given BlockRef b is outside of search boundaries
-// defined by min/max timestamp and min/max fingerprint.
-// Fingerprint ranges must be sorted in ascending order.
-func isOutsideRange(b BlockRef, interval Interval, bounds []v1.FingerprintBounds) bool {
-	// check time interval
-	if !interval.Overlaps(b.Interval()) {
-		return true
-	}
-
-	// check fingerprint ranges
-	for _, keyspace := range bounds {
-		if keyspace.Overlaps(b.Bounds) {
-			return false
-		}
-	}
-
-	return true
+	return refs, nil
 }
