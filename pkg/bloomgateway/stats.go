@@ -16,7 +16,7 @@ type Stats struct {
 	MetasFetchTime, BlocksFetchTime     *atomic.Duration
 	ProcessingTime, TotalProcessingTime *atomic.Duration
 	PostProcessingTime                  *atomic.Duration
-	ProcessedBlocks                     *atomic.Int32
+	ProcessedMetas, ProcessedBlocks     *atomic.Int32
 }
 
 type statsKey int
@@ -27,6 +27,7 @@ var ctxKey = statsKey(0)
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
 		Status:              "unknown",
+		ProcessedMetas:      atomic.NewInt32(0),
 		ProcessedBlocks:     atomic.NewInt32(0),
 		QueueTime:           atomic.NewDuration(0),
 		MetasFetchTime:      atomic.NewDuration(0),
@@ -71,6 +72,7 @@ func (s *Stats) KVArgs() []any {
 		"status", s.Status,
 		"tasks", s.NumTasks,
 		"filters", s.NumFilters,
+		"metas_processed", s.ProcessedMetas.Load(),
 		"blocks_processed", s.ProcessedBlocks.Load(),
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,
@@ -99,6 +101,13 @@ func (s *Stats) AddMetasFetchTime(t time.Duration) {
 		return
 	}
 	s.MetasFetchTime.Add(t)
+}
+
+func (s *Stats) AddMetasProcessed(n int) {
+	if s == nil {
+		return
+	}
+	s.ProcessedMetas.Add(int32(n))
 }
 
 func (s *Stats) AddBlocksFetchTime(t time.Duration) {

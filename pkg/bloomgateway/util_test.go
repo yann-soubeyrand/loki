@@ -73,6 +73,27 @@ func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	}
 }
 
+func TestPartitionTasks_TooManyBlocks(t *testing.T) {
+	bounds := []bloomshipper.BlockRef{
+		mkBlockRef(0, 99),
+		mkBlockRef(0, 50),
+		mkBlockRef(100, 199),
+	}
+
+	tasks := []Task{
+		{
+			series: []*logproto.GroupedChunkRefs{
+				{Fingerprint: 10},
+			},
+		},
+	}
+
+	results := partitionTasks(tasks, bounds)
+	require.Equal(t, 1, len(results))
+	require.Equal(t, 1, len(results[0].tasks))
+	require.Equal(t, v1.NewBounds(0, 99), results[0].ref.Bounds)
+}
+
 func TestPartitionTasks(t *testing.T) {
 
 	t.Run("consecutive block ranges", func(t *testing.T) {

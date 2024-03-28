@@ -79,8 +79,16 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	duration := time.Since(start)
 	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", duration, "err", err)
 
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		for _, meta := range metas {
+			sp.LogKV("process meta", meta.MetaRef.String())
+		}
+	}
+
 	for _, t := range tasks {
-		FromContext(t.ctx).AddMetasFetchTime(duration)
+		stats := FromContext(t.ctx)
+		stats.AddMetasProcessed(len(metas))
+		stats.AddMetasFetchTime(duration)
 	}
 
 	if err != nil {
