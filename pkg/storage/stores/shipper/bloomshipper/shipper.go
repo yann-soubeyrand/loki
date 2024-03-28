@@ -57,6 +57,10 @@ func (s *Shipper) Stop() {
 
 // BlocksForMetas returns up to one block from the given metas for each fingerprints
 func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Fingerprint) (refs []BlockRef, err error) {
+	if len(fingerprints) == 0 {
+		return nil, nil
+	}
+
 	// We use these two maps to make sure we only return one block per fingerprint
 	missingFPs := make(map[model.Fingerprint]struct{}, len(fingerprints))
 	for _, fp := range fingerprints {
@@ -66,6 +70,11 @@ func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Finger
 
 	for _, meta := range metas {
 		for _, block := range meta.Blocks {
+			// Break if we already have a block for each FP
+			if len(missingFPs) == 0 {
+				break
+			}
+
 			// Filter out blocks that are outside the requested interval
 			if !interval.Overlaps(block.Interval()) {
 				continue
@@ -79,10 +88,6 @@ func BlocksForMetas(metas []Meta, interval Interval, fingerprints []model.Finger
 				}
 			}
 		}
-	}
-
-	if len(missingFPs) > 0 {
-		return nil, fmt.Errorf("missing blocks for %d fingerprints", len(missingFPs))
 	}
 
 	refs = make([]BlockRef, 0, len(blocks))

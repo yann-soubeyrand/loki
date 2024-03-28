@@ -74,6 +74,8 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 			"table", table,
 			"tenant", params.TenantID,
 			"prefix", prefix,
+			"fingerprints", len(params.Fingerprints),
+			"keyspace", params.Keyspace.Range(),
 		)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
@@ -130,11 +132,25 @@ func (b *bloomStoreEntry) resolveMetasByKeyspace(objects []client.StorageObject,
 	return refs, nil
 }
 
+// resolveMetasByFingerprints returns up to one meta ref for each fingerprint.
 func (b *bloomStoreEntry) resolveMetasByFingerprints(objects []client.StorageObject, fingerprints []model.Fingerprint) ([]MetaRef, error) {
+	if len(fingerprints) == 0 {
+		return nil, nil
+	}
+
+	missingFPs := make(map[model.Fingerprint]struct{}, len(fingerprints))
+	for _, fp := range fingerprints {
+		missingFPs[fp] = struct{}{}
+	}
+	metas := make(map[MetaRef]struct{}, len(fingerprints))
 	maxSearchFp := fingerprints[len(fingerprints)-1]
-	var refs []MetaRef
 
 	for _, object := range objects {
+		// Break if we already have a meta for each FP
+		if len(missingFPs) == 0 {
+			break
+		}
+
 		metaRef, err := b.ParseMetaKey(key(object.Key))
 		if err != nil {
 			return nil, err
@@ -148,14 +164,17 @@ func (b *bloomStoreEntry) resolveMetasByFingerprints(objects []client.StorageObj
 			break
 		}
 
-		// Filter out metas that are outside the requested fingerprints
-		if matchesFp := slices.ContainsFunc(fingerprints, func(f model.Fingerprint) bool {
-			return metaRef.Bounds.Match(f)
-		}); !matchesFp {
-			continue
+		for fp := range missingFPs {
+			if metaRef.Bounds.Match(fp) {
+				delete(missingFPs, fp)
+				metas[metaRef] = struct{}{}
+			}
 		}
+	}
 
-		refs = append(refs, metaRef)
+	refs := make([]MetaRef, 0, len(metas))
+	for meta := range metas {
+		refs = append(refs, meta)
 	}
 
 	return refs, nil

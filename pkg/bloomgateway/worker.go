@@ -91,7 +91,8 @@ func (w *worker) running(_ context.Context) error {
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
-		var series []model.Fingerprint
+		var uniqueSeries map[model.Fingerprint]struct{}
+
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -105,12 +106,17 @@ func (w *worker) running(_ context.Context) error {
 			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
 			tasks = append(tasks, task)
 
-			if cap(series) == 0 {
-				series = make([]model.Fingerprint, 0, len(task.series))
+			if uniqueSeries == nil {
+				uniqueSeries = make(map[model.Fingerprint]struct{}, len(task.series))
 			}
 			for _, s := range task.series {
-				series = append(series, model.Fingerprint(s.Fingerprint))
+				uniqueSeries[model.Fingerprint(s.Fingerprint)] = struct{}{}
 			}
+		}
+
+		series := make([]model.Fingerprint, 0, len(uniqueSeries))
+		for s := range uniqueSeries {
+			series = append(series, s)
 		}
 
 		start = time.Now()

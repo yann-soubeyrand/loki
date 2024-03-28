@@ -134,6 +134,23 @@ func TestBloomShipper_BlocksForMetas(t *testing.T) {
 				createBlockRef(201, 300, 300, 400),
 			},
 		},
+		{
+			name: "two blocks same fp diff interval",
+			metas: []Meta{
+				{
+					Blocks: []BlockRef{
+						createBlockRef(100, 200, 300, 400),
+						createBlockRef(100, 200, 400, 500),
+					},
+				},
+			},
+			interval:     NewInterval(300, 500),
+			fingerprints: []model.Fingerprint{100, 200},
+			expectedRefs: []BlockRef{
+				createBlockRef(100, 200, 300, 400),
+				createBlockRef(100, 200, 400, 500),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			blocks, err := BlocksForMetas(tc.metas, tc.interval, tc.fingerprints)

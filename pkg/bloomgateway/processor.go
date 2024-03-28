@@ -71,11 +71,10 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 
 	start := time.Now()
 	metas, err := p.store.FetchMetas(ctx, metaSearch)
+	level.Debug(p.logger).Log("msg", "fetched metas", "day", day.String(), "count", len(metas), "duration", time.Since(start), "series", len(series), "err", err)
 	if err != nil {
 		return err
 	}
-
-	level.Debug(p.logger).Log("msg", "fetched metas", "count", len(metas), "duration", time.Since(start), "series", len(series))
 
 	blocksRefs, err := bloomshipper.BlocksForMetas(metas, interval, series)
 	if err != nil {
@@ -102,7 +101,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		bloomshipper.WithPool(true),
 	)
 	duration := time.Since(start)
-	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
+	level.Debug(p.logger).Log("msg", "fetched blocks", "blocks", len(refs), "metas", len(metas), "series", len(series), "duration", duration, "err", err)
 
 	for _, t := range tasks {
 		stats := FromContext(t.ctx)
