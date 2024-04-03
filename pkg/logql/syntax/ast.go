@@ -366,6 +366,10 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	if right.Left != nil {
+		left = newNestedLineFilterExpr(left, right.Left)
+	}
+
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
