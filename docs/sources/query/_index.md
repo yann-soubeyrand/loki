@@ -146,7 +146,7 @@ The pattern match filters are an [experimental feature](/docs/release-life-cycle
 - `|>` (line match pattern)
 - `!>` (line match not pattern)
 
-Despite the fact that filtering by patterns is a subset of the regex filter scope, these operators extend the syntax explicitly.
+Despite the fact that filtering by patterns is a subset of the regex filter scope, these operators extend the syntax explicitly. In addition, using the pattern match filters is much faster than regex.
 
 The filter presumes that placeholders mask arbitrary non-empty literals. Thus, the `"<_>"` pattern matches any non-empty line, and the `""`a pattern only matches empty lines. The semantics are identical to the pattern parse stage, with an exception that named captures are not allowed: fields are never extracted at filtering.
 
