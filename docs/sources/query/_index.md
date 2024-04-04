@@ -80,7 +80,7 @@ Other elements are dropped.
 `vector1 unless vector2` results in a vector consisting of the elements of vector1 for which there are no elements in vector2 with exactly matching label sets.
 All matching elements in both vectors are dropped.
 
-##### Binary operators examples
+#### Binary operators examples
 
 This contrived query will return the intersection of these queries, effectively `rate({app="bar"})`:
 
@@ -174,38 +174,50 @@ More details can be found in the [Golang language documentation](https://golang.
 `2 * 3 % 2` is evaluated as `(2 * 3) % 2`.
 
 ### Keywords on and ignoring
+
 The `ignoring` keyword causes specified labels to be ignored during matching.
 The syntax:
+
 ```logql
 <vector expr> <bin-op> ignoring(<labels>) <vector expr>
 ```
+
 This example will return the machines which total count within the last minutes exceed average value for app `foo`.
+
 ```logql
 max by(machine) (count_over_time({app="foo"}[1m])) > bool ignoring(machine) avg(count_over_time({app="foo"}[1m]))
 ```
+
 The on keyword reduces the set of considered labels to a specified list.
 The syntax:
+
 ```logql
 <vector expr> <bin-op> on(<labels>) <vector expr>
 ```
+
 This example will return every machine total count within the last minutes ratio in app `foo`:
+
 ```logql
 sum by(machine) (count_over_time({app="foo"}[1m])) / on() sum(count_over_time({app="foo"}[1m]))
 ```
 
 ### Many-to-one and one-to-many vector matches
+
 Many-to-one and one-to-many matchings occur when each vector element on the "one"-side can match with multiple elements on the "many"-side. You must explicitly request matching by using the group_left or group_right modifier, where left or right determines which vector has the higher cardinality.
 The syntax:
+
 ```logql
 <vector expr> <bin-op> ignoring(<labels>) group_left(<labels>) <vector expr>
 <vector expr> <bin-op> ignoring(<labels>) group_right(<labels>) <vector expr>
 <vector expr> <bin-op> on(<labels>) group_left(<labels>) <vector expr>
 <vector expr> <bin-op> on(<labels>) group_right(<labels>) <vector expr>
 ```
+
 The label list provided with the group modifier contains additional labels from the "one"-side that are included in the result metrics. And a label should only appear in one of the lists specified by `on` and `group_x`. Every time series of the result vector must be uniquely identifiable.
 Grouping modifiers can only be used for comparison and arithmetic. By default, the system matches `and`, `unless`, and `or` operations with all entries in the right vector.
 
 The following example returns the rates requests partitioned by `app` and `status` as a percentage of total requests.
+
 ```logql
 sum by (app, status) (
   rate(
@@ -230,7 +242,9 @@ sum by (app) (
   {app="foo", status="500"} => 0.1
 ]
 ```
+
 This version uses `group_left(<labels>)` to include `<labels>` from the right hand side in the result and returns the cost of discarded events per user, organization, and namespace:
+
 ```logql
 sum by (user, namespace) (
   rate(
@@ -307,7 +321,7 @@ quantile_over_time(
 	) by (cluster)
 ```
 
->Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
 
 ## Functions
 
@@ -317,13 +331,14 @@ Loki supports functions to operate on data.
 
 For each time series in `v`,
 
-```
+```logql
 label_replace(v instant-vector,
     dst_label string,
     replacement string,
     src_label string,
     regex string)
 ```
+
 matches the regular expression `regex` against the label `src_label`.
 If it matches, then the time series is returned with the label `dst_label` replaced by the expansion of `replacement`.
 
