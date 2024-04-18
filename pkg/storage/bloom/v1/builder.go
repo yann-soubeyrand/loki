@@ -72,7 +72,7 @@ type BlockBuilder struct {
 
 func NewBlockOptions(enc chunkenc.Encoding, NGramLength, NGramSkip, MaxBlockSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     byte(1),
+		version:     DefaultSchemaVersion,
 		encoding:    enc,
 		nGramLength: NGramLength,
 		nGramSkip:   NGramSkip,
@@ -108,9 +108,21 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 	}, nil
 }
 
+type BloomStats struct {
+	Chunks, Lines, Bytes, Tokens uint64
+}
+
+func (b *BloomStats) Add(other BloomStats) {
+	b.Chunks += other.Chunks
+	b.Lines += other.Lines
+	b.Bytes += other.Bytes
+	b.Tokens += other.Tokens
+}
+
 type SeriesWithBloom struct {
-	Series *Series
-	Bloom  *Bloom
+	Series     *Series
+	Bloom      *Bloom
+	BloomStats *BloomStats
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
@@ -194,7 +206,7 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	return &BloomBlockBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(int(opts.BloomPageSize)),
+		page:    NewPageWriter(int(opts.BloomPageSize), opts.Schema),
 		scratch: &encoding.Encbuf{},
 	}
 }
@@ -229,8 +241,15 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}
 
 	return BloomOffset{
-		Page:       len(b.pages),
-		ByteOffset: b.page.Add(b.scratch.Get()),
+		Page: len(b.pages),
+		ByteOffset: b.page.Add(b.scratch.Get(), &BloomPageStats{
+			Series: 1,
+			Blooms: 1,
+			Chunks: series.BloomStats.Chunks,
+			Lines:  series.BloomStats.Lines,
+			Bytes:  series.BloomStats.Bytes,
+			Tokens: series.BloomStats.Tokens,
+		}),
 	}, nil
 }
 
@@ -244,7 +263,7 @@ func (b *BloomBlockBuilder) Close() (uint32, error) {
 	b.scratch.Reset()
 	b.scratch.PutUvarint(len(b.pages))
 	for _, h := range b.pages {
-		h.Encode(b.scratch)
+		h.Encode(b.scratch, b.opts.Schema.version)
 	}
 	// put offset to beginning of header section
 	// cannot be varint encoded because it's offset will be calculated as
@@ -274,11 +293,13 @@ func (b *BloomBlockBuilder) flushPage() error {
 	if err != nil {
 		return errors.Wrap(err, "writing bloom page")
 	}
+
 	header := BloomPageHeader{
 		N:               b.page.Count(),
 		Offset:          b.offset,
 		Len:             compressedLen,
 		DecompressedLen: decompressedLen,
+		Stats:           b.page.Stats(),
 	}
 	b.pages = append(b.pages, header)
 	b.offset += compressedLen
@@ -287,44 +308,50 @@ func (b *BloomBlockBuilder) flushPage() error {
 }
 
 type PageWriter struct {
+	schema     Schema
 	enc        *encoding.Encbuf
 	targetSize int
-	n          int // number of encoded blooms
+	stats      BloomPageStats
 }
 
-func NewPageWriter(targetSize int) PageWriter {
+func NewPageWriter(targetSize int, schema Schema) PageWriter {
 	return PageWriter{
+		schema:     schema,
 		enc:        &encoding.Encbuf{},
 		targetSize: targetSize,
 	}
 }
 
 func (w *PageWriter) Count() int {
-	return w.n
+	return int(w.stats.Blooms)
+}
+
+func (w *PageWriter) Stats() BloomPageStats {
+	return w.stats
 }
 
 func (w *PageWriter) Reset() {
 	w.enc.Reset()
-	w.n = 0
+	w.stats.Reset()
 }
 
 func (w *PageWriter) SpaceFor(numBytes int) bool {
 	// if a single bloom exceeds the target size, still accept it
 	// otherwise only accept it if adding it would not exceed the target size
-	return w.n == 0 || w.enc.Len()+numBytes <= w.targetSize
+	return w.stats.Blooms == 0 || w.enc.Len()+numBytes <= w.targetSize
 }
 
-func (w *PageWriter) Add(item []byte) (offset int) {
+func (w *PageWriter) Add(item []byte, stats *BloomPageStats) (offset int) {
 	offset = w.enc.Len()
 	w.enc.PutBytes(item)
-	w.n++
+	w.stats.Add(stats)
 	return offset
 }
 
 func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
 	// write the number of blooms in this page, must not be varint
 	// so we can calculate it's position+len during decoding
-	w.enc.PutBE64(uint64(w.n))
+	w.enc.PutBE64(uint64(w.stats.Blooms))
 	decompressedLen := w.enc.Len()
 
 	buf := &bytes.Buffer{}
@@ -370,7 +397,7 @@ func NewIndexBuilder(opts BlockOptions, writer io.WriteCloser) *IndexBuilder {
 	return &IndexBuilder{
 		opts:    opts,
 		writer:  writer,
-		page:    NewPageWriter(int(opts.SeriesPageSize)),
+		page:    NewPageWriter(int(opts.SeriesPageSize), opts.Schema),
 		scratch: &encoding.Encbuf{},
 	}
 }
@@ -431,7 +458,7 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 		}
 	}
 
-	_ = b.page.Add(b.scratch.Get())
+	_ = b.page.Add(b.scratch.Get(), nil)
 	b.previousFp = series.Fingerprint
 	b.previousOffset = series.Offset
 	return nil
@@ -526,7 +553,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) (int, error)
+	populate func(*Series, *Bloom) (BloomStats, error)
 	metrics  *Metrics
 }
 
@@ -537,7 +564,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) (int, error),
+	populate func(*Series, *Bloom) (BloomStats, error),
 	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
@@ -614,14 +641,15 @@ func (mb *MergeBuilder) processNextSeries(
 	chunksIndexed += len(chunksToAdd)
 
 	if len(chunksToAdd) > 0 {
-		sourceBytes, err := mb.populate(
+		newStats, err := mb.populate(
 			&Series{
 				Fingerprint: nextInStore.Fingerprint,
 				Chunks:      chunksToAdd,
 			},
 			cur.Bloom,
 		)
-		bytesAdded += sourceBytes
+		cur.BloomStats.Add(newStats)
+		bytesAdded += int(cur.BloomStats.Bytes)
 
 		if err != nil {
 			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)

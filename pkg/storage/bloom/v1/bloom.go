@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -202,22 +204,78 @@ func (d *BloomPageDecoder) Err() error {
 	return d.err
 }
 
-type BloomPageHeader struct {
-	N, Offset, Len, DecompressedLen int
+type BloomPageStats struct {
+	Series, Blooms, Chunks, Lines, Bytes, Tokens uint64
 }
 
-func (h *BloomPageHeader) Encode(enc *encoding.Encbuf) {
+func (s *BloomPageStats) Add(other *BloomPageStats) {
+	if other == nil {
+		return
+	}
+
+	s.Series += other.Series
+	s.Blooms += other.Blooms
+	s.Chunks += other.Chunks
+	s.Lines += other.Lines
+	s.Bytes += other.Bytes
+	s.Tokens += other.Tokens
+}
+
+func (s *BloomPageStats) Reset() {
+	s.Series = 0
+	s.Blooms = 0
+	s.Chunks = 0
+	s.Lines = 0
+	s.Bytes = 0
+	s.Tokens = 0
+}
+
+func (s *BloomPageStats) Encode(enc *encoding.Encbuf) {
+	enc.PutBE64(s.Series)
+	enc.PutBE64(s.Blooms)
+	enc.PutBE64(s.Chunks)
+	enc.PutBE64(s.Lines)
+	enc.PutBE64(s.Bytes)
+	enc.PutBE64(s.Tokens)
+}
+
+func (s *BloomPageStats) Decode(dec *encoding.Decbuf) error {
+	s.Series = dec.Be64()
+	s.Blooms = dec.Be64()
+	s.Chunks = dec.Be64()
+	s.Lines = dec.Be64()
+	s.Bytes = dec.Be64()
+	s.Tokens = dec.Be64()
+	return dec.Err()
+}
+
+type BloomPageHeader struct {
+	N, Offset, Len, DecompressedLen int
+	Stats                           BloomPageStats
+}
+
+func (h *BloomPageHeader) Encode(enc *encoding.Encbuf, version byte) {
 	enc.PutUvarint(h.N)
 	enc.PutUvarint(h.Offset)
 	enc.PutUvarint(h.Len)
 	enc.PutUvarint(h.DecompressedLen)
+
+	if version >= V2 {
+		h.Stats.Encode(enc)
+	}
 }
 
-func (h *BloomPageHeader) Decode(dec *encoding.Decbuf) error {
+func (h *BloomPageHeader) Decode(dec *encoding.Decbuf, version byte) error {
 	h.N = dec.Uvarint()
 	h.Offset = dec.Uvarint()
 	h.Len = dec.Uvarint()
 	h.DecompressedLen = dec.Uvarint()
+
+	if version >= V2 {
+		if err := h.Stats.Decode(dec); err != nil {
+			return errors.Wrap(err, "decoding bloom page stats")
+		}
+	}
 	return dec.Err()
 }
 
@@ -268,7 +326,7 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	b.pageHeaders = make([]BloomPageHeader, dec.Uvarint())
 	for i := 0; i < len(b.pageHeaders); i++ {
 		header := &b.pageHeaders[i]
-		if err := header.Decode(&dec); err != nil {
+		if err := header.Decode(&dec, b.schema.version); err != nil {
 			return 0, errors.Wrapf(err, "decoding %dth series header", i)
 		}
 	}
@@ -288,6 +346,21 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	if page.Len > maxPageSize {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
+		level.Error(util_log.Logger).Log(
+			"msg", "page too large",
+			"version", b.schema.version,
+			"page", pageIdx,
+			"len", page.Len,
+			"decompressedLen", page.DecompressedLen,
+			"max", maxPageSize,
+			"blooms", page.N,
+			"stats_blooms", page.Stats.Blooms,
+			"series", page.Stats.Series,
+			"chunks", page.Stats.Chunks,
+			"lines", page.Stats.Lines,
+			"bytes", page.Stats.Bytes,
+			"tokens", page.Stats.Tokens,
+		)
 		return nil, ErrPageTooLarge
 	}
 

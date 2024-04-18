@@ -14,10 +14,11 @@ const (
 	magicNumber = uint32(0xCA7CAFE5)
 	// Add new versions below
 	V1 byte = iota
+	V2
 )
 
 const (
-	DefaultSchemaVersion = V1
+	DefaultSchemaVersion = V2
 )
 
 var (

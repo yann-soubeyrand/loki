@@ -78,8 +78,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
 	s.version = dec.Byte()
-	if s.version != 1 {
-		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
+	if s.version != V1 && s.version != V2 {
+		return errors.Errorf("invalid version. expected any of [%d, %d], got %d", V1, V2, s.version)
 	}
 
 	s.encoding = chunkenc.Encoding(dec.Byte())
