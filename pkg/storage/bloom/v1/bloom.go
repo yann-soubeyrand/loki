@@ -21,11 +21,45 @@ import (
 var DefaultMaxPageSize = 64 << 20 // 64MB
 var ErrPageTooLarge = errors.Errorf("bloom page too large")
 
-type Bloom struct {
-	filter.ScalableBloomFilter
+type BloomStats struct {
+	Chunks, Lines, Bytes, Tokens uint64
 }
 
-func (b *Bloom) Encode(enc *encoding.Encbuf) error {
+func (b *BloomStats) Add(other BloomStats) {
+	b.Chunks += other.Chunks
+	b.Lines += other.Lines
+	b.Bytes += other.Bytes
+	b.Tokens += other.Tokens
+}
+
+func (b *BloomStats) Reset() {
+	b.Chunks = 0
+	b.Lines = 0
+	b.Bytes = 0
+	b.Tokens = 0
+}
+
+func (s *BloomStats) Encode(enc *encoding.Encbuf) {
+	enc.PutBE64(s.Chunks)
+	enc.PutBE64(s.Lines)
+	enc.PutBE64(s.Bytes)
+	enc.PutBE64(s.Tokens)
+}
+
+func (s *BloomStats) Decode(dec *encoding.Decbuf) error {
+	s.Chunks = dec.Be64()
+	s.Lines = dec.Be64()
+	s.Bytes = dec.Be64()
+	s.Tokens = dec.Be64()
+	return dec.Err()
+}
+
+type Bloom struct {
+	filter.ScalableBloomFilter
+	Stats BloomStats
+}
+
+func (b *Bloom) Encode(enc *encoding.Encbuf, version byte) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
 	buf := bytes.NewBuffer(BlockPool.Get(int(b.Capacity() / 8)))
 
@@ -40,12 +74,23 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	enc.PutUvarint(len(data)) // length of bloom filter
 	enc.PutBytes(data)
 	BlockPool.Put(data[:0]) // release to pool
+
+	if version >= V2 {
+		b.Stats.Encode(enc)
+	}
+
 	return nil
 }
 
-func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
+func (b *Bloom) DecodeCopy(dec *encoding.Decbuf, version byte) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
+
+	if version >= V2 {
+		if err := b.Stats.Decode(dec); err != nil {
+			return errors.Wrap(err, "decoding bloom stats")
+		}
+	}
 
 	_, err := b.ReadFrom(bytes.NewReader(data))
 	if err != nil {
@@ -55,9 +100,15 @@ func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
 	return nil
 }
 
-func (b *Bloom) Decode(dec *encoding.Decbuf) error {
+func (b *Bloom) Decode(dec *encoding.Decbuf, version byte) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
+
+	if version >= V2 {
+		if err := b.Stats.Decode(dec); err != nil {
+			return errors.Wrap(err, "decoding bloom stats")
+		}
+	}
 
 	_, err := b.DecodeFrom(data)
 	if err != nil {
@@ -67,7 +118,7 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	return nil
 }
 
-func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHeader, version byte) (*BloomPageDecoder, error) {
 	data := BlockPool.Get(page.Len)[:page.Len]
 	defer BlockPool.Put(data)
 
@@ -93,13 +144,13 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 		return nil, errors.Wrap(err, "decompressing bloom page")
 	}
 
-	decoder := NewBloomPageDecoder(b)
+	decoder := NewBloomPageDecoder(b, version)
 
 	return decoder, nil
 }
 
 // shortcut to skip allocations when we know the page is not compressed
-func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader, version byte) (*BloomPageDecoder, error) {
 	// data + checksum
 	if page.Len != page.DecompressedLen+4 {
 		return nil, errors.New("the Len and DecompressedLen of the page do not match")
@@ -116,10 +167,10 @@ func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*Bloom
 		return nil, errors.Wrap(err, "checksumming bloom page")
 	}
 
-	return NewBloomPageDecoder(dec.Get()), nil
+	return NewBloomPageDecoder(dec.Get(), version), nil
 }
 
-func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
+func NewBloomPageDecoder(data []byte, version byte) *BloomPageDecoder {
 	// last 8 bytes are the number of blooms in this page
 	dec := encoding.DecWith(data[len(data)-8:])
 	n := int(dec.Be64())
@@ -130,9 +181,10 @@ func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 	// reset data to the bloom portion of the page
 
 	decoder := &BloomPageDecoder{
-		dec:  &dec,
-		data: data,
-		n:    n,
+		version: version,
+		dec:     &dec,
+		data:    data,
+		n:       n,
 	}
 
 	return decoder
@@ -147,8 +199,9 @@ func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
 // We could optimize this by encoding the mode (read, write) into our structs
 // and doing copy-on-write shenannigans, but I'm avoiding this for now.
 type BloomPageDecoder struct {
-	data []byte
-	dec  *encoding.Decbuf
+	version byte
+	data    []byte
+	dec     *encoding.Decbuf
 
 	n   int // number of blooms in page
 	cur *Bloom
@@ -187,7 +240,7 @@ func (d *BloomPageDecoder) Next() bool {
 	}
 
 	var b Bloom
-	d.err = b.Decode(d.dec)
+	d.err = b.Decode(d.dec, d.version)
 	// end of iteration, error
 	if d.err != nil {
 		return false
@@ -205,7 +258,8 @@ func (d *BloomPageDecoder) Err() error {
 }
 
 type BloomPageStats struct {
-	Series, Blooms, Chunks, Lines, Bytes, Tokens uint64
+	BloomStats
+	Series, Blooms uint64
 }
 
 func (s *BloomPageStats) Add(other *BloomPageStats) {
@@ -215,37 +269,27 @@ func (s *BloomPageStats) Add(other *BloomPageStats) {
 
 	s.Series += other.Series
 	s.Blooms += other.Blooms
-	s.Chunks += other.Chunks
-	s.Lines += other.Lines
-	s.Bytes += other.Bytes
-	s.Tokens += other.Tokens
+	s.BloomStats.Add(other.BloomStats)
 }
 
 func (s *BloomPageStats) Reset() {
 	s.Series = 0
 	s.Blooms = 0
-	s.Chunks = 0
-	s.Lines = 0
-	s.Bytes = 0
-	s.Tokens = 0
+	s.BloomStats.Reset()
 }
 
 func (s *BloomPageStats) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(s.Series)
 	enc.PutBE64(s.Blooms)
-	enc.PutBE64(s.Chunks)
-	enc.PutBE64(s.Lines)
-	enc.PutBE64(s.Bytes)
-	enc.PutBE64(s.Tokens)
+	s.BloomStats.Encode(enc)
 }
 
 func (s *BloomPageStats) Decode(dec *encoding.Decbuf) error {
 	s.Series = dec.Be64()
 	s.Blooms = dec.Be64()
-	s.Chunks = dec.Be64()
-	s.Lines = dec.Be64()
-	s.Bytes = dec.Be64()
-	s.Tokens = dec.Be64()
+	if err := s.BloomStats.Decode(dec); err != nil {
+		return errors.Wrap(err, "decoding bloom page stats")
+	}
 	return dec.Err()
 }
 
@@ -371,9 +415,9 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	}
 
 	if b.schema.encoding == chunkenc.EncNone {
-		res, err = LazyDecodeBloomPageNoCompression(r, page)
+		res, err = LazyDecodeBloomPageNoCompression(r, page, b.schema.version)
 	} else {
-		res, err = LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)
+		res, err = LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page, b.schema.version)
 	}
 
 	if err != nil {

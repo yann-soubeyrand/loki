@@ -108,21 +108,9 @@ func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, erro
 	}, nil
 }
 
-type BloomStats struct {
-	Chunks, Lines, Bytes, Tokens uint64
-}
-
-func (b *BloomStats) Add(other BloomStats) {
-	b.Chunks += other.Chunks
-	b.Lines += other.Lines
-	b.Bytes += other.Bytes
-	b.Tokens += other.Tokens
-}
-
 type SeriesWithBloom struct {
 	Series *Series
 	Bloom  *Bloom
-	Stats  BloomStats
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
@@ -230,7 +218,7 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	}
 
 	b.scratch.Reset()
-	if err := series.Bloom.Encode(b.scratch); err != nil {
+	if err := series.Bloom.Encode(b.scratch, b.opts.Schema.version); err != nil {
 		return BloomOffset{}, errors.Wrapf(err, "encoding bloom for %v", series.Series.Fingerprint)
 	}
 
@@ -243,12 +231,9 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 	return BloomOffset{
 		Page: len(b.pages),
 		ByteOffset: b.page.Add(b.scratch.Get(), &BloomPageStats{
-			Series: 1,
-			Blooms: 1,
-			Chunks: series.Stats.Chunks,
-			Lines:  series.Stats.Lines,
-			Bytes:  series.Stats.Bytes,
-			Tokens: series.Stats.Tokens,
+			Series:     1,
+			Blooms:     1,
+			BloomStats: series.Bloom.Stats,
 		}),
 	}, nil
 }
@@ -556,7 +541,7 @@ type MergeBuilder struct {
 	// store
 	store Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(*Series, *Bloom) (BloomStats, error)
+	populate func(*Series, *Bloom) (int, error)
 	metrics  *Metrics
 }
 
@@ -567,7 +552,7 @@ type MergeBuilder struct {
 func NewMergeBuilder(
 	blocks Iterator[*SeriesWithBloom],
 	store Iterator[*Series],
-	populate func(*Series, *Bloom) (BloomStats, error),
+	populate func(*Series, *Bloom) (int, error),
 	metrics *Metrics,
 ) *MergeBuilder {
 	return &MergeBuilder{
@@ -644,15 +629,14 @@ func (mb *MergeBuilder) processNextSeries(
 	chunksIndexed += len(chunksToAdd)
 
 	if len(chunksToAdd) > 0 {
-		newStats, err := mb.populate(
+		sourceBytes, err := mb.populate(
 			&Series{
 				Fingerprint: nextInStore.Fingerprint,
 				Chunks:      chunksToAdd,
 			},
 			cur.Bloom,
 		)
-		cur.Stats.Add(newStats)
-		bytesAdded += int(cur.Stats.Bytes)
+		bytesAdded += sourceBytes
 
 		if err != nil {
 			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)

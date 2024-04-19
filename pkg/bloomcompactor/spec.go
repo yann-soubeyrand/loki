@@ -88,14 +88,14 @@ func NewSimpleBloomGenerator(
 	}
 }
 
-func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (v1.BloomStats, error) {
-	return func(series *v1.Series, bloom *v1.Bloom) (v1.BloomStats, error) {
+func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, error) {
+	return func(series *v1.Series, bloom *v1.Bloom) (int, error) {
 		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
 		if err != nil {
-			return v1.BloomStats{}, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
+			return 0, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
 		}
 
-		stats, err := s.tokenizer.Populate(
+		bytesAdded, err := s.tokenizer.Populate(
 			&v1.SeriesWithBloom{
 				Series: series,
 				Bloom:  bloom,
@@ -106,7 +106,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Se
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)
 		}
-		return stats, err
+		return bytesAdded, err
 	}
 
 }
@@ -152,7 +152,7 @@ type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
 	metrics      *Metrics
-	populate     func(*v1.Series, *v1.Bloom) (v1.BloomStats, error)
+	populate     func(*v1.Series, *v1.Bloom) (int, error)
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
 	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
@@ -166,7 +166,7 @@ func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *Metrics,
-	populate func(*v1.Series, *v1.Bloom) (v1.BloomStats, error),
+	populate func(*v1.Series, *v1.Bloom) (int, error),
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
 	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
