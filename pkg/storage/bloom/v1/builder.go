@@ -120,9 +120,9 @@ func (b *BloomStats) Add(other BloomStats) {
 }
 
 type SeriesWithBloom struct {
-	Series     *Series
-	Bloom      *Bloom
-	BloomStats *BloomStats
+	Series *Series
+	Bloom  *Bloom
+	Stats  BloomStats
 }
 
 func (b *BlockBuilder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
@@ -245,10 +245,10 @@ func (b *BloomBlockBuilder) Append(series SeriesWithBloom) (BloomOffset, error) 
 		ByteOffset: b.page.Add(b.scratch.Get(), &BloomPageStats{
 			Series: 1,
 			Blooms: 1,
-			Chunks: series.BloomStats.Chunks,
-			Lines:  series.BloomStats.Lines,
-			Bytes:  series.BloomStats.Bytes,
-			Tokens: series.BloomStats.Tokens,
+			Chunks: series.Stats.Chunks,
+			Lines:  series.Stats.Lines,
+			Bytes:  series.Stats.Bytes,
+			Tokens: series.Stats.Tokens,
 		}),
 	}, nil
 }
@@ -458,7 +458,10 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 		}
 	}
 
-	_ = b.page.Add(b.scratch.Get(), nil)
+	_ = b.page.Add(b.scratch.Get(), &BloomPageStats{
+		Series: 1,
+		Blooms: 1,
+	})
 	b.previousFp = series.Fingerprint
 	b.previousOffset = series.Offset
 	return nil
@@ -648,8 +651,8 @@ func (mb *MergeBuilder) processNextSeries(
 			},
 			cur.Bloom,
 		)
-		cur.BloomStats.Add(newStats)
-		bytesAdded += int(cur.BloomStats.Bytes)
+		cur.Stats.Add(newStats)
+		bytesAdded += int(cur.Stats.Bytes)
 
 		if err != nil {
 			return nil, bytesAdded, false, false, errors.Wrapf(err, "populating bloom for series with fingerprint: %v", nextInStore.Fingerprint)
