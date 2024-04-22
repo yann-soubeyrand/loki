@@ -104,6 +104,38 @@ func (s *ScalableBloomFilter) Capacity() uint {
 	return capacity
 }
 
+func (s *ScalableBloomFilter) CapacityPerLayer() []uint {
+	capacity := make([]uint, len(s.filters))
+	for i, bf := range s.filters {
+		capacity[i] = bf.Capacity()
+	}
+	return capacity
+}
+
+func (s *ScalableBloomFilter) BytesSize() uint {
+	var size uint
+	for _, bf := range s.filters {
+		size += bf.BytesSize()
+	}
+	return size
+}
+
+func (s *ScalableBloomFilter) BytesSizePerLayer() [][]uint {
+	size := make([][]uint, len(s.filters))
+	for i, bf := range s.filters {
+		size[i] = bf.BytesSizePerPartition()
+	}
+	return size
+}
+
+func (s *ScalableBloomFilter) FPRatePerLayer() []float64 {
+	rates := make([]float64, len(s.filters))
+	for i, bf := range s.filters {
+		rates[i] = bf.FPRate()
+	}
+	return rates
+}
+
 // K returns the number of hash functions used in each Bloom filter.
 // Returns the highest value (the last filter)
 func (s *ScalableBloomFilter) K() uint {
@@ -119,6 +151,22 @@ func (s *ScalableBloomFilter) FillRatio() float64 {
 		count += float64(capacity)
 	}
 	return sum / count
+}
+
+func (s *ScalableBloomFilter) FillRatioPerLayer() []float64 {
+	fillRatios := make([]float64, len(s.filters))
+	for i, filter := range s.filters {
+		fillRatios[i] = filter.FillRatio()
+	}
+	return fillRatios
+}
+
+func (s *ScalableBloomFilter) CountPerLayer() []uint {
+	counts := make([]uint, len(s.filters))
+	for i, filter := range s.filters {
+		counts[i] = filter.Count()
+	}
+	return counts
 }
 
 // Test will test for membership of the data and returns true if it is a

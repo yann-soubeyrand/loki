@@ -390,6 +390,73 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	if page.Len > maxPageSize {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
+
+		if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {
+			panic(err)
+		}
+
+		if b.schema.encoding == chunkenc.EncNone {
+			res, err = LazyDecodeBloomPageNoCompression(r, page, b.schema.version)
+		} else {
+			res, err = LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page, b.schema.version)
+		}
+		if err != nil {
+			panic(err)
+		}
+		res.Next()
+		bloom := res.At()
+
+		var capacityPerLayer string
+		for i, layer := range bloom.CapacityPerLayer() {
+			if i > 0 {
+				capacityPerLayer += ", "
+			}
+			capacityPerLayer += fmt.Sprintf("%d", layer)
+		}
+
+		var fillRatioPerLayer string
+		for i, layer := range bloom.FillRatioPerLayer() {
+			if i > 0 {
+				fillRatioPerLayer += ", "
+			}
+			fillRatioPerLayer += fmt.Sprintf("%.2f", layer)
+		}
+
+		var countPerLayer string
+		for i, layer := range bloom.CountPerLayer() {
+			if i > 0 {
+				countPerLayer += ", "
+			}
+			countPerLayer += fmt.Sprintf("%d", layer)
+		}
+
+		var bytesPerLayer string
+		for i, layer := range bloom.BytesSizePerLayer() {
+			if i > 0 {
+				bytesPerLayer += ", "
+			}
+
+			var layerSum uint
+			var layerSizes string
+			for j, size := range layer {
+				if j > 0 {
+					layerSizes += ", "
+				}
+				layerSizes += fmt.Sprintf("%d", size)
+				layerSum += size
+			}
+
+			bytesPerLayer += fmt.Sprintf("{%d: [%s]}", layerSum, layerSizes)
+		}
+
+		var fpRatesPerLayer string
+		for i, layer := range bloom.FPRatePerLayer() {
+			if i > 0 {
+				fpRatesPerLayer += ", "
+			}
+			fpRatesPerLayer += fmt.Sprintf("%f", layer)
+		}
+
 		level.Error(util_log.Logger).Log(
 			"msg", "page too large",
 			"version", b.schema.version,
@@ -404,7 +471,16 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 			"lines", page.Stats.Lines,
 			"bytes", page.Stats.Bytes,
 			"tokens", page.Stats.Tokens,
+			"capacity", bloom.Capacity(),
+			"capacityPerLayer", capacityPerLayer,
+			"fillRatio", bloom.FillRatio(),
+			"fillRatioPerLayer", fillRatioPerLayer,
+			"countPerLayer", countPerLayer,
+			"bloomBytes", bloom.BytesSize(),
+			"bytesPerLayer", bytesPerLayer,
+			"fpRatesPerLayer", fpRatesPerLayer,
 		)
+
 		return nil, ErrPageTooLarge
 	}
 

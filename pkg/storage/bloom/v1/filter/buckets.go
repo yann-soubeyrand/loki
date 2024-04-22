@@ -51,6 +51,10 @@ func (b *Buckets) Count() uint {
 	return b.count
 }
 
+func (b *Buckets) BytesSize() uint {
+	return uint(len(b.data))
+}
+
 // Increment will increment the value in the specified bucket by the provided
 // delta. A bucket can be decremented by providing a negative delta. The value
 // is clamped to zero and the maximum bucket value. Returns itself to allow for

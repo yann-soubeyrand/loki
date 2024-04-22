@@ -54,6 +54,8 @@ type PartitionedBloomFilter struct {
 	s              uint        // partition size (m / k)
 	estimatedCount uint        // number of distinct items added
 	optimalCount   uint        // optimal number of distinct items that can be stored in this filter
+
+	fpRate float64
 }
 
 // NewPartitionedBloomFilterWithEstimates creates a new partitioned Bloom filter
@@ -76,6 +78,8 @@ func NewPartitionedBloomFilterWithCapacity(m uint, fpRate float64) *PartitionedB
 		k:            k,
 		s:            s,
 		optimalCount: estimatedCount(m, fillRatio),
+
+		fpRate: fpRate,
 	}
 }
 
@@ -89,6 +93,26 @@ func NewPartitionedBloomFilter(n uint, fpRate float64) *PartitionedBloomFilter {
 // Capacity returns the Bloom filter capacity, m.
 func (p *PartitionedBloomFilter) Capacity() uint {
 	return p.m
+}
+
+func (p *PartitionedBloomFilter) BytesSize() uint {
+	var size uint
+	for _, bf := range p.partitions {
+		size += bf.BytesSize()
+	}
+	return size
+}
+
+func (p *PartitionedBloomFilter) BytesSizePerPartition() []uint {
+	var sizes []uint
+	for _, bf := range p.partitions {
+		sizes = append(sizes, bf.BytesSize())
+	}
+	return sizes
+}
+
+func (p *PartitionedBloomFilter) FPRate() float64 {
+	return p.fpRate
 }
 
 // K returns the number of hash functions.

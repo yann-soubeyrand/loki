@@ -31,7 +31,7 @@ func TestBloomBlock_BloomPageDecoder_PageSize(t *testing.T) {
 			blockOpts := BlockOptions{
 				Schema: Schema{
 					version:  DefaultSchemaVersion,
-					encoding: chunkenc.EncSnappy,
+					encoding: chunkenc.EncNone,
 				},
 				SeriesPageSize: 100,
 				BloomPageSize:  10 << 10,
