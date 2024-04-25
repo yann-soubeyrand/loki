@@ -387,6 +387,8 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	page := b.pageHeaders[pageIdx]
 	// fmt.Printf("pageIdx=%d page=%+v size=%.2fMiB\n", pageIdx, page, float64(page.Len)/float64(1<<20))
 
+	metrics.RecordPageMetrics(page)
+
 	if page.Len > maxPageSize {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonTooLarge).Add(float64(page.DecompressedLen))
@@ -406,6 +408,8 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 		res.Next()
 		bloom := res.At()
 
+		metrics.RecordBloomMetrics(bloom)
+
 		var capacityPerLayer string
 		for i, layer := range bloom.CapacityPerLayer() {
 			if i > 0 {
@@ -414,12 +418,14 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 			capacityPerLayer += fmt.Sprintf("%d", layer)
 		}
 
+		var fillRatioLastLayer float64
 		var fillRatioPerLayer string
 		for i, layer := range bloom.FillRatioPerLayer() {
 			if i > 0 {
 				fillRatioPerLayer += ", "
 			}
 			fillRatioPerLayer += fmt.Sprintf("%.2f", layer)
+			fillRatioLastLayer = layer
 		}
 
 		var countPerLayer string
@@ -475,6 +481,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 			"capacityPerLayer", capacityPerLayer,
 			"fillRatio", bloom.FillRatio(),
 			"fillRatioPerLayer", fillRatioPerLayer,
+			"fillRatioLastLayer", fillRatioLastLayer,
 			"countPerLayer", countPerLayer,
 			"bloomBytes", bloom.BytesSize(),
 			"bytesPerLayer", bytesPerLayer,

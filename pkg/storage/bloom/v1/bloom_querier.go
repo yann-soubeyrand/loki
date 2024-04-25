@@ -1,6 +1,8 @@
 package v1
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+)
 
 type BloomQuerier interface {
 	Seek(BloomOffset) (*Bloom, error)

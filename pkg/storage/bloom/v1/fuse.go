@@ -4,6 +4,7 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/common/model"
 )
 
@@ -94,9 +95,21 @@ func (fq *FusedQuerier) Run() error {
 			continue
 		}
 
+		level.Debug(util_log.Logger).Log(
+			"msg", "processing blooms for series",
+			"series", series.Fingerprint,
+		)
+
 		// Now that we've found the series, we need to find the unpack the bloom
 		fq.bq.blooms.Seek(series.Offset)
 		if !fq.bq.blooms.Next() {
+			if errors.Is(fq.bq.blooms.Err(), ErrPageTooLarge) {
+				level.Warn(util_log.Logger).Log(
+					"msg", "bloom too large for series",
+					"series", series.Fingerprint,
+				)
+			}
+
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())
 			for _, input := range nextBatch {
@@ -109,6 +122,8 @@ func (fq *FusedQuerier) Run() error {
 		}
 
 		bloom := fq.bq.blooms.At()
+		fq.bq.block.metrics.RecordBloomMetrics(bloom)
+
 		// test every input against this chunk
 		for _, input := range nextBatch {
 			_, inBlooms := input.Chks.Compare(series.Chunks, true)

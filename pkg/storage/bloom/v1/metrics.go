@@ -22,6 +22,16 @@ type Metrics struct {
 	pagesSkipped *prometheus.CounterVec
 	bytesRead    *prometheus.CounterVec
 	bytesSkipped *prometheus.CounterVec
+
+	pageLen                 *prometheus.HistogramVec
+	pageSeries              *prometheus.HistogramVec
+	bloomChunks             *prometheus.HistogramVec
+	bloomTokens             *prometheus.HistogramVec
+	bloomSourceBytes        *prometheus.HistogramVec
+	bloomLines              *prometheus.HistogramVec
+	bloomLayers             *prometheus.HistogramVec
+	bloomBytesSize          *prometheus.HistogramVec
+	bloomLastLayerFillRatio *prometheus.HistogramVec
 }
 
 const (
@@ -114,5 +124,89 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_bytes_skipped_total",
 			Help:      "Number of bytes skipped during query iteration",
 		}, []string{"type", "reason"}),
+
+		pageLen: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_page_len",
+			Help:      "Length of a bloom page",
+			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 10),
+		}, []string{"size"}),
+		pageSeries: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_page_series",
+			Help:      "Number of series in a page",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 4096, 10),
+		}, []string{"size"}),
+		bloomChunks: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_chunks",
+			Help:      "Number of chunks in a bloom",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 4096, 10),
+		}, []string{"size"}),
+		bloomTokens: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_tokens",
+			Help:      "Number of tokens in a bloom",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
+		}, []string{"size"}),
+		bloomSourceBytes: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_source_bytes",
+			Help:      "Number of bytes in a bloom source",
+			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 10),
+		}, []string{"size"}),
+		bloomLines: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_lines",
+			Help:      "Number of lines in a bloom",
+			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
+		}, []string{"size"}),
+		bloomLayers: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_layers",
+			Help:      "Number of layers in a bloom",
+			Buckets:   prometheus.LinearBuckets(1, 1, 12),
+		}, []string{"size"}),
+		bloomBytesSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_bytes_size",
+			Help:      "Number of bytes in a bloom",
+			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 10),
+		}, []string{"size"}),
+		bloomLastLayerFillRatio: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_exp_last_layer_fill_ratio",
+			Help:      "Number of bytes in a bloom",
+			Buckets:   prometheus.LinearBuckets(0, 0.1, 10),
+		}, []string{"size"}),
 	}
+}
+
+func (m *Metrics) RecordPageMetrics(page BloomPageHeader) {
+	size := "small"
+	if page.Len > 64<<20 { // 64MB
+		size = "large"
+	}
+	m.pageSeries.WithLabelValues(size).Observe(float64(page.Stats.Series))
+	m.pageLen.WithLabelValues(size).Observe(float64(page.Len))
+}
+
+func (m *Metrics) RecordBloomMetrics(bloom *Bloom) {
+	bytesSize := bloom.BytesSize()
+	size := "small"
+	if bytesSize > 64<<20 { // 64MB
+		size = "large"
+	}
+
+	m.bloomChunks.WithLabelValues(size).Observe(float64(bloom.Stats.Chunks))
+	m.bloomTokens.WithLabelValues(size).Observe(float64(bloom.Stats.Tokens))
+	m.bloomSourceBytes.WithLabelValues(size).Observe(float64(bloom.Stats.Bytes))
+	m.bloomLines.WithLabelValues(size).Observe(float64(bloom.Stats.Lines))
+	m.bloomBytesSize.WithLabelValues(size).Observe(float64(bloom.BytesSize()))
+
+	layers := bloom.FillRatioPerLayer()
+	fillRatioLastLayer := layers[len(layers)-1]
+
+	m.bloomLayers.WithLabelValues(size).Observe(float64(len(layers)))
+	m.bloomLastLayerFillRatio.WithLabelValues(size).Observe(fillRatioLastLayer)
 }

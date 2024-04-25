@@ -2,7 +2,9 @@ package v1
 
 import (
 	"fmt"
+	"github.com/go-kit/log/level"
 
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
@@ -149,6 +151,12 @@ func (bq *BlockQuerier) Next() bool {
 			// skip blocks that are too large
 			if errors.Is(bq.blooms.Err(), ErrPageTooLarge) {
 				// fmt.Printf("skipping bloom page: %s (%d)\n", series.Fingerprint, series.Chunks.Len())
+
+				level.Warn(util_log.Logger).Log(
+					"msg", "bloom too large for series",
+					"series", series.Fingerprint,
+				)
+
 				bq.blooms.err = nil
 				continue
 			}
