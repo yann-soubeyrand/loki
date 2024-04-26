@@ -101,14 +101,19 @@ func (fq *FusedQuerier) Run() error {
 		)
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		fq.bq.blooms.Seek(series.Offset)
-		if !fq.bq.blooms.Next() {
-			if errors.Is(fq.bq.blooms.Err(), ErrPageTooLarge) {
-				level.Warn(util_log.Logger).Log(
-					"msg", "bloom too large for series",
-					"series", series.Fingerprint,
-				)
-			}
+		fq.bq.blooms.Seek(series.Offset, series.Fingerprint)
+		if !fq.bq.blooms.Next(series.Fingerprint) {
+			//if errors.Is(fq.bq.blooms.Err(), ErrPageTooLarge) {
+			//	level.Warn(util_log.Logger).Log(
+			//		"msg", "bloom too large for series",
+			//		"series", series.Fingerprint,
+			//	)
+			//}
+
+			level.Warn(util_log.Logger).Log(
+				"msg", "bloom too large for series",
+				err, fq.bq.blooms.Err(),
+			)
 
 			// fingerprint not found, can't remove chunks
 			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())

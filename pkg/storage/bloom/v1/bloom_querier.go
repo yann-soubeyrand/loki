@@ -2,6 +2,7 @@ package v1
 
 import (
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 )
 
 type BloomQuerier interface {
@@ -44,7 +45,7 @@ func (it *LazyBloomIter) ensureInit() {
 	}
 }
 
-func (it *LazyBloomIter) Seek(offset BloomOffset) {
+func (it *LazyBloomIter) Seek(offset BloomOffset, series ...model.Fingerprint) {
 	it.ensureInit()
 
 	// if we need a different page or the current page hasn't been loaded,
@@ -62,7 +63,7 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
+		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics, series...)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return
@@ -70,21 +71,20 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 
 		it.curPageIndex = offset.Page
 		it.curPage = decoder
-
 	}
 
 	it.curPage.Seek(offset.ByteOffset)
 }
 
-func (it *LazyBloomIter) Next() bool {
+func (it *LazyBloomIter) Next(series ...model.Fingerprint) bool {
 	it.ensureInit()
 	if it.err != nil {
 		return false
 	}
-	return it.next()
+	return it.next(series...)
 }
 
-func (it *LazyBloomIter) next() bool {
+func (it *LazyBloomIter) next(series ...model.Fingerprint) bool {
 	if it.err != nil {
 		return false
 	}
@@ -103,6 +103,7 @@ func (it *LazyBloomIter) next() bool {
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,
+				series...,
 			)
 			if err != nil {
 				it.err = err

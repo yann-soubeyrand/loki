@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"fmt"
+	"github.com/prometheus/common/model"
 	"io"
 
 	"github.com/go-kit/log/level"
@@ -377,11 +378,16 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	return checksum, nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, err error) {
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics, s ...model.Fingerprint) (res *BloomPageDecoder, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
 		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
+	}
+
+	var series model.Fingerprint
+	if len(s) > 0 {
+		series = s[0]
 	}
 
 	page := b.pageHeaders[pageIdx]
@@ -465,6 +471,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 
 		level.Error(util_log.Logger).Log(
 			"msg", "page too large",
+			"series_fp", series.String(),
 			"version", b.schema.version,
 			"page", pageIdx,
 			"len", page.Len,
@@ -488,7 +495,8 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 			"fpRatesPerLayer", fpRatesPerLayer,
 		)
 
-		return nil, ErrPageTooLarge
+		return nil, fmt.Errorf("bloom too big for series %s - bytes(%d) origBytes(%d) layers(%d) fillRatio(%.2f) lastLayerFillRatio(%.2f) capacity(%d) capacityPerLayer(%s) countPerLayer(%s) bytesPerLayer(%s) fpRatesPerLayer(%s)",
+			series, bloom.BytesSize(), page.Stats.Bytes, len(bloom.CapacityPerLayer()), bloom.FillRatio(), fillRatioLastLayer, bloom.Capacity(), capacityPerLayer, countPerLayer, bytesPerLayer, fpRatesPerLayer)
 	}
 
 	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {

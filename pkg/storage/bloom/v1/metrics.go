@@ -153,13 +153,13 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: constants.Loki,
 			Name:      "bloom_exp_source_bytes",
 			Help:      "Number of bytes in a bloom source",
-			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 10),
+			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 30<<30, 50), // 1KB to 30GB
 		}, []string{"size"}),
 		bloomLines: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_exp_lines",
 			Help:      "Number of lines in a bloom",
-			Buckets:   prometheus.ExponentialBucketsRange(1, 33554432, 10),
+			Buckets:   prometheus.ExponentialBucketsRange(1, 50000000, 50),
 		}, []string{"size"}),
 		bloomLayers: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
@@ -171,7 +171,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: constants.Loki,
 			Name:      "bloom_exp_bytes_size",
 			Help:      "Number of bytes in a bloom",
-			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 10),
+			Buckets:   prometheus.ExponentialBucketsRange(1<<10, 512<<20, 20),
 		}, []string{"size"}),
 		bloomLastLayerFillRatio: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
