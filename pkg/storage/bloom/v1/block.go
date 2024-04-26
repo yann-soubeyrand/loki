@@ -3,6 +3,7 @@ package v1
 import (
 	"fmt"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
@@ -112,6 +113,8 @@ type BlockQuerier struct {
 	block *Block // ref to underlying block
 
 	cur *SeriesWithBloom
+
+	uuid string
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
@@ -120,10 +123,13 @@ type BlockQuerier struct {
 // when the underlying bloom bytes don't escape the decoder, i.e.
 // when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
 func NewBlockQuerier(b *Block, noCapture bool, maxPageSize int) *BlockQuerier {
+	blockUuid := uuid.New().String()
 	return &BlockQuerier{
 		block:  b,
 		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b, noCapture, maxPageSize),
+		blooms: NewLazyBloomIter(b, noCapture, maxPageSize, blockUuid),
+
+		uuid: blockUuid,
 	}
 }
 

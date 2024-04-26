@@ -378,17 +378,23 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	return checksum, nil
 }
 
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics, s ...model.Fingerprint) (res *BloomPageDecoder, err error) {
+type BloomPageDecoderExtraInfo struct {
+	from             string
+	series           *SeriesWithOffset
+	seriesFP         model.Fingerprint
+	uuidFusedQuerier string
+	uuidBlockQuerier string
+	uuidBloomIter    string
+}
+
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics, infos ...BloomPageDecoderExtraInfo) (res *BloomPageDecoder, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
 		return nil, fmt.Errorf("invalid page (%d) for bloom page decoding", pageIdx)
 	}
 
-	var series model.Fingerprint
-	if len(s) > 0 {
-		series = s[0]
-	}
+	info := infos[0]
 
 	page := b.pageHeaders[pageIdx]
 	// fmt.Printf("pageIdx=%d page=%+v size=%.2fMiB\n", pageIdx, page, float64(page.Len)/float64(1<<20))
@@ -411,7 +417,11 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 		if err != nil {
 			panic(err)
 		}
-		res.Next()
+
+		res.Seek(info.series.Offset.ByteOffset)
+		if !res.Next() {
+			panic("expected to find series")
+		}
 		bloom := res.At()
 
 		metrics.RecordBloomMetrics(bloom)
@@ -471,13 +481,13 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 
 		level.Error(util_log.Logger).Log(
 			"msg", "page too large",
-			"series_fp", series.String(),
+			"series_fp", info.series.Fingerprint,
 			"version", b.schema.version,
 			"page", pageIdx,
+			"N", page.N,
 			"len", page.Len,
 			"decompressedLen", page.DecompressedLen,
 			"max", maxPageSize,
-			"blooms", page.N,
 			"stats_blooms", page.Stats.Blooms,
 			"series", page.Stats.Series,
 			"chunks", page.Stats.Chunks,
@@ -495,8 +505,9 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 			"fpRatesPerLayer", fpRatesPerLayer,
 		)
 
-		return nil, fmt.Errorf("bloom too big for series %s - bytes(%d) origBytes(%d) layers(%d) fillRatio(%.2f) lastLayerFillRatio(%.2f) capacity(%d) capacityPerLayer(%s) countPerLayer(%s) bytesPerLayer(%s) fpRatesPerLayer(%s)",
-			series, bloom.BytesSize(), page.Stats.Bytes, len(bloom.CapacityPerLayer()), bloom.FillRatio(), fillRatioLastLayer, bloom.Capacity(), capacityPerLayer, countPerLayer, bytesPerLayer, fpRatesPerLayer)
+		return nil, fmt.Errorf(
+			`err="bloom too big" version=%d seriesPtr=%p series=%s seriesFP=%s page=%d seriesArgPage=%d bloomsInPage=%d bytes=%d origBytes=%d origChunks=%d origLines=%d origTokens=%d from=%s uuidFusedQuerier=%s uuidBlockQuerier=%s uuidBloomIter=%s`,
+			b.schema.version, info.series, info.series.Fingerprint, info.seriesFP, pageIdx, info.series.Offset.Page, page.N, bloom.BytesSize(), bloom.Stats.Bytes, bloom.Stats.Chunks, bloom.Stats.Lines, bloom.Stats.Tokens, info.from, info.uuidFusedQuerier, info.uuidBlockQuerier, info.uuidBloomIter)
 	}
 
 	if _, err = r.Seek(int64(page.Offset), io.SeekStart); err != nil {

@@ -1,6 +1,9 @@
 package v1
 
 import (
+	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
@@ -20,6 +23,9 @@ type LazyBloomIter struct {
 	err          error
 	curPageIndex int
 	curPage      *BloomPageDecoder
+
+	blockQuerierUuid string
+	uuid             string
 }
 
 // NewLazyBloomIter returns a new lazy bloom iterator.
@@ -27,11 +33,14 @@ type LazyBloomIter struct {
 // will be returned to the pool for efficiency.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder.
-func NewLazyBloomIter(b *Block, pool bool, maxSize int) *LazyBloomIter {
+func NewLazyBloomIter(b *Block, pool bool, maxSize int, blockQuerierUuid string) *LazyBloomIter {
 	return &LazyBloomIter{
 		usePool: pool,
 		b:       b,
 		m:       maxSize,
+
+		blockQuerierUuid: blockQuerierUuid,
+		uuid:             uuid.New().String(),
 	}
 }
 
@@ -45,7 +54,13 @@ func (it *LazyBloomIter) ensureInit() {
 	}
 }
 
-func (it *LazyBloomIter) Seek(offset BloomOffset, series ...model.Fingerprint) {
+type LazyBloomIterInfo struct {
+	series           *SeriesWithOffset
+	seriesFP         model.Fingerprint
+	uuidFusedQuerier string
+}
+
+func (it *LazyBloomIter) Seek(offset BloomOffset, infos ...LazyBloomIterInfo) {
 	it.ensureInit()
 
 	// if we need a different page or the current page hasn't been loaded,
@@ -63,10 +78,22 @@ func (it *LazyBloomIter) Seek(offset BloomOffset, series ...model.Fingerprint) {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return
 		}
-		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics, series...)
+		decoder, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics, BloomPageDecoderExtraInfo{
+			from:             "lazy_bloom_iter_seek",
+			series:           infos[0].series,
+			seriesFP:         infos[0].seriesFP,
+			uuidFusedQuerier: infos[0].uuidFusedQuerier,
+			uuidBlockQuerier: it.blockQuerierUuid,
+			uuidBloomIter:    it.uuid,
+		})
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return
+		}
+		if it.err != nil {
+			level.Error(util_log.Logger).Log(
+				"msg", "iterator error is set but decoding succeeded",
+			)
 		}
 
 		it.curPageIndex = offset.Page
@@ -76,15 +103,15 @@ func (it *LazyBloomIter) Seek(offset BloomOffset, series ...model.Fingerprint) {
 	it.curPage.Seek(offset.ByteOffset)
 }
 
-func (it *LazyBloomIter) Next(series ...model.Fingerprint) bool {
+func (it *LazyBloomIter) Next(infos ...LazyBloomIterInfo) bool {
 	it.ensureInit()
 	if it.err != nil {
 		return false
 	}
-	return it.next(series...)
+	return it.next(infos...)
 }
 
-func (it *LazyBloomIter) next(series ...model.Fingerprint) bool {
+func (it *LazyBloomIter) next(infos ...LazyBloomIterInfo) bool {
 	if it.err != nil {
 		return false
 	}
@@ -103,7 +130,13 @@ func (it *LazyBloomIter) next(series ...model.Fingerprint) bool {
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,
-				series...,
+				BloomPageDecoderExtraInfo{
+					from:             "lazy_bloom_iter_next",
+					series:           infos[0].series,
+					uuidFusedQuerier: infos[0].uuidFusedQuerier,
+					uuidBlockQuerier: it.blockQuerierUuid,
+					uuidBloomIter:    it.uuid,
+				},
 			)
 			if err != nil {
 				it.err = err

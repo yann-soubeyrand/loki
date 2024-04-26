@@ -1,9 +1,11 @@
 package v1
 
 import (
+	"fmt"
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/common/model"
 )
@@ -33,6 +35,8 @@ type FusedQuerier struct {
 	bq     *BlockQuerier
 	inputs Iterator[[]Request]
 	logger log.Logger
+
+	uuid string
 }
 
 func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger log.Logger) *FusedQuerier {
@@ -57,6 +61,8 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 		bq:     bq,
 		inputs: merging,
 		logger: logger,
+
+		uuid: uuid.New().String(),
 	}
 }
 
@@ -85,7 +91,7 @@ func (fq *FusedQuerier) Run() error {
 		series := fq.bq.series.At()
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.series.Err())
+			level.Debug(fq.logger).Log("msg", "fingerprint not found in series pages", "fp", series.Fingerprint, "err", fq.bq.series.Err())
 			for _, input := range nextBatch {
 				input.Response <- Output{
 					Fp:       fp,
@@ -101,8 +107,15 @@ func (fq *FusedQuerier) Run() error {
 		)
 
 		// Now that we've found the series, we need to find the unpack the bloom
-		fq.bq.blooms.Seek(series.Offset, series.Fingerprint)
-		if !fq.bq.blooms.Next(series.Fingerprint) {
+		fq.bq.blooms.Seek(series.Offset, LazyBloomIterInfo{
+			series:           series,
+			seriesFP:         series.Fingerprint,
+			uuidFusedQuerier: fq.uuid,
+		})
+		if !fq.bq.blooms.Next(LazyBloomIterInfo{
+			series:           series,
+			uuidFusedQuerier: fq.uuid,
+		}) {
 			//if errors.Is(fq.bq.blooms.Err(), ErrPageTooLarge) {
 			//	level.Warn(util_log.Logger).Log(
 			//		"msg", "bloom too large for series",
@@ -110,13 +123,22 @@ func (fq *FusedQuerier) Run() error {
 			//	)
 			//}
 
-			level.Warn(util_log.Logger).Log(
+			level.Warn(fq.logger).Log(
 				"msg", "bloom too large for series",
+				"series", series.Fingerprint,
 				err, fq.bq.blooms.Err(),
 			)
 
 			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.blooms.Err())
+			level.Debug(fq.logger).Log(
+				"msg", "fingerprint not found in bloom pages",
+				"fp", series.Fingerprint,
+				"fpPtr", fmt.Sprintf("%p", series),
+				"batchLen", len(nextBatch),
+				"fusedID", fq.uuid,
+				"blockQuerierID", fq.bq.uuid,
+				"bloomIterID", fq.bq.blooms.uuid,
+				"err", fq.bq.blooms.Err())
 			for _, input := range nextBatch {
 				input.Response <- Output{
 					Fp:       fp,
