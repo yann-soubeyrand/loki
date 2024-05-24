@@ -24,7 +24,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		{
 			// High variation leads to many patterns including some that are too generic (many tokens matched) and some that are too specific (too few matchers)
 			name:      "Generate patterns on high variation logfmt logs",
-			tokenizer: NewLogFmtTokenizer(true),
+			tokenizer: NewExpLogfmtTokenizer(),
 			inputFile: "testdata/agent-logfmt.txt",
 			patterns: []string{
 				`ts=<_> caller=filetarget.go:192 level=info component=logs logs_config=default msg="filetarget: watcher closed, tailer stopped, positions saved" path=<_>`,
@@ -81,7 +81,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		{
 			// Lower variation leads to fewer patterns including some with limited value (single lines, no matchers)
 			name:      "Generate patterns on low variation logfmt logs",
-			tokenizer: NewLogFmtTokenizer(true),
+			tokenizer: NewExpLogfmtTokenizer(),
 			inputFile: "testdata/ingester-logfmt.txt",
 			patterns: []string{
 				`ts=<_> caller=head.go:216 level=debug tenant=987678 msg="profile is empty after delta computation" metricName=memory`,
@@ -140,7 +140,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		},
 		{
 			name:      "Patterns for distributor logs",
-			tokenizer: NewLogFmtTokenizer(true),
+			tokenizer: NewExpLogfmtTokenizer(),
 			inputFile: "testdata/distributor-logfmt.txt",
 			patterns: []string{
 				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=<_> msg="POST /ingest?aggregationType=&from=1714652227232613927&<_> (200) <_>"`,

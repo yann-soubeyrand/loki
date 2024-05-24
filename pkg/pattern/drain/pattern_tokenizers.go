@@ -114,3 +114,72 @@ func (a *LogfmtTokenizer) Unmarshal(tokens []string) string {
 	}
 	return output.String()
 }
+
+// LogfmtTokenizer is designed for Logfmt formatted logs.
+// It splits lines into separate tokens for keys and values.
+// tokenizerInsideQuotes splits values with multiple words into separate tokens by spaces.
+type ExpLogfmtTokenizer struct {
+	bufs       [][]byte
+	splitBufs  [][]byte
+	splitBufs2 [][]byte
+}
+
+// Generic split: splits after each instance of sep,
+// including sepSave bytes of sep in the subslices.
+func (e *ExpLogfmtTokenizer) genSplit(s, sep []byte, sepSave int, a [][]byte) [][]byte {
+	n := bytes.Count(s, sep) + 1
+
+	n--
+	i := 0
+	for i < n {
+		m := bytes.Index(s, sep)
+		if m < 0 {
+			break
+		}
+		a[i] = s[: m+sepSave : m+sepSave]
+		s = s[m+len(sep):]
+		i++
+	}
+	a[i] = s
+	return a[:i+1]
+}
+
+func NewExpLogfmtTokenizer() *ExpLogfmtTokenizer {
+	return &ExpLogfmtTokenizer{
+		bufs:       make([][]byte, 0, 128),
+		splitBufs:  make([][]byte, 128),
+		splitBufs2: make([][]byte, 128),
+	}
+}
+
+// Marshal accepts a log line in []byte form and splits it into tokens
+// The result from Marshal is only valid until the next call to Marshal as buffers will be re-used to avoid unnecessary allocations.
+// Marshal accepts a log line in []byte form and splits it into tokens
+// The result from Marshal is only valid until the next call to Marshal as buffers will be re-used to avoid unnecessary allocations.
+func (a *ExpLogfmtTokenizer) Marshal(in []byte) [][]byte {
+	tokens := a.bufs
+	processed := tokenization.Preprocess(in, false, false) // Returns a new byte buffer after tokenisation
+
+	for _, slice := range a.genSplit(processed, []byte("="), 1, a.splitBufs) {
+		tokens = append(tokens, a.genSplit(slice, []byte(" "), 0, a.splitBufs2)...)
+	}
+
+	return tokens
+}
+func (a *ExpLogfmtTokenizer) Unmarshal(tokens []string) string {
+	var output strings.Builder
+
+	for _, token := range tokens {
+		if strings.HasSuffix(token, "=") {
+			output.WriteString(token)
+		} else {
+			output.WriteString(token)
+			output.WriteString(" ")
+		}
+	}
+	result := output.String()
+	if result[len(result)-1] == ' ' {
+		return result[:len(result)-1]
+	}
+	return result
+}

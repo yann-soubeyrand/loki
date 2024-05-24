@@ -150,7 +150,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 		numSpaces := strings.Count(pushReqStream.Entries[0].Line, " ")
 		numEquals := strings.Count(pushReqStream.Entries[0].Line, "=")
 		if numEquals > numSpaces/2 {
-			formatter = drain.NewLogFmtTokenizer(true)
+			formatter = drain.NewExpLogfmtTokenizer()
 		}
 	}
 	s, err := newStream(fp, sortedLabels, formatter)
