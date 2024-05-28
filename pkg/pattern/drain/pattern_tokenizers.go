@@ -119,13 +119,13 @@ func (a *LogfmtTokenizer) Unmarshal(tokens []string) string {
 // It splits lines into separate tokens for keys and values.
 // tokenizerInsideQuotes splits values with multiple words into separate tokens by spaces.
 type ExpLogfmtTokenizer struct {
-	bufs       [][]byte
-	splitBufs  [][]byte
-	splitBufs2 [][]byte
+	tokenBuffer          [][]byte
+	tempEqualSplitBuffer [][]byte
+	tempSpaceSplitBuffer [][]byte
 }
 
-// Generic split: splits after each instance of sep,
-// including sepSave bytes of sep in the subslices.
+// Copy of bytes.genSplit but with a pre-allocated buffer to save on allocations
+// Some guard cases have been removed for our usage
 func (e *ExpLogfmtTokenizer) genSplit(s, sep []byte, sepSave int, a [][]byte) [][]byte {
 	n := bytes.Count(s, sep) + 1
 
@@ -146,22 +146,20 @@ func (e *ExpLogfmtTokenizer) genSplit(s, sep []byte, sepSave int, a [][]byte) []
 
 func NewExpLogfmtTokenizer() *ExpLogfmtTokenizer {
 	return &ExpLogfmtTokenizer{
-		bufs:       make([][]byte, 0, 128),
-		splitBufs:  make([][]byte, 128),
-		splitBufs2: make([][]byte, 128),
+		tokenBuffer:          make([][]byte, 0, 1024),
+		tempEqualSplitBuffer: make([][]byte, 1024),
+		tempSpaceSplitBuffer: make([][]byte, 1024),
 	}
 }
 
 // Marshal accepts a log line in []byte form and splits it into tokens
 // The result from Marshal is only valid until the next call to Marshal as buffers will be re-used to avoid unnecessary allocations.
-// Marshal accepts a log line in []byte form and splits it into tokens
-// The result from Marshal is only valid until the next call to Marshal as buffers will be re-used to avoid unnecessary allocations.
 func (a *ExpLogfmtTokenizer) Marshal(in []byte) [][]byte {
-	tokens := a.bufs
+	tokens := a.tokenBuffer
 	processed := tokenization.Preprocess(in, false, false) // Returns a new byte buffer after tokenisation
 
-	for _, slice := range a.genSplit(processed, []byte("="), 1, a.splitBufs) {
-		tokens = append(tokens, a.genSplit(slice, []byte(" "), 0, a.splitBufs2)...)
+	for _, slice := range a.genSplit(processed, []byte("="), 1, a.tempEqualSplitBuffer) {
+		tokens = append(tokens, a.genSplit(slice, []byte(" "), 0, a.tempSpaceSplitBuffer)...)
 	}
 
 	return tokens

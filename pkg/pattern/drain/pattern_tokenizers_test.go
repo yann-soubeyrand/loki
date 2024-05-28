@@ -24,11 +24,7 @@ func Benchmark_logfmtTokenizer_Marshal(t *testing.B) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.B) {
-			a := ExpLogfmtTokenizer{
-				bufs:       make([][]byte, 0, 128),
-				splitBufs:  make([][]byte, 512),
-				splitBufs2: make([][]byte, 512),
-			}
+			a := NewExpLogfmtTokenizer()
 			file, err := os.ReadFile(tt.input)
 			require.NoError(t, err)
 
