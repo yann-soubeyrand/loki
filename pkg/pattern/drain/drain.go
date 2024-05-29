@@ -151,16 +151,21 @@ func New(config *Config, metrics *Metrics) *Drain {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
+	evictionsCounter := 0
 	var evictFn func(int, *LogCluster)
 	if metrics != nil {
-		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+		evictFn = func(int, *LogCluster) {
+			evictionsCounter++
+			metrics.PatternsEvictedTotal.Inc()
+		}
 	}
 
 	d := &Drain{
-		config:      config,
-		rootNode:    createNode(),
-		idToCluster: createLogClusterCache(config.MaxClusters, evictFn),
-		metrics:     metrics,
+		config:          config,
+		rootNode:        createNode(),
+		idToCluster:     createLogClusterCache(config.MaxClusters, evictFn),
+		metrics:         metrics,
+		EvictionCounter: &evictionsCounter,
 	}
 	return d
 }
@@ -171,6 +176,7 @@ type Drain struct {
 	idToCluster     *LogClusterCache
 	clustersCounter int
 	metrics         *Metrics
+	EvictionCounter *int
 }
 
 func (d *Drain) Clusters() []*LogCluster {
