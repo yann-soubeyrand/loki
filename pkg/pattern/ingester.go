@@ -124,8 +124,8 @@ func (i *Ingester) countBusyDrains() {
 		case <-countTicker.C:
 			for _, instance := range i.getInstances() {
 				_ = instance.streams.ForEach(func(stream *stream) (bool, error) {
-					if *stream.patterns.EvictionCounter > 0 {
-						_ = i.logger.Log("msg", "Pattern evictions detected", "stream", stream.labelsString, "evictions", *stream.patterns.EvictionCounter)
+					if *stream.patterns.EvictionCounter > 500 {
+						_ = i.logger.Log("msg", "High pattern evictions detected", "stream", stream.labelsString, "evictions", *stream.patterns.EvictionCounter)
 						*stream.patterns.EvictionCounter = 0
 					}
 					return true, nil
@@ -149,7 +149,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return err
 	}
 	i.initFlushQueues()
-	i.countBusyDrains()
+	go i.countBusyDrains()
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
