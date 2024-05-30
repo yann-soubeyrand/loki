@@ -24,6 +24,12 @@ type stream struct {
 	lastTs int64
 }
 
+// Hard-coded ban on service names that are known to be too noisy.
+// TODO: Replace this with a more reactive solution to automatically reduce pattern generation from noisy streams.
+var bannedServiceNames = map[string]interface{}{
+	"grafana-ruler/grafana-ruler": struct{}{},
+}
+
 func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
@@ -41,6 +47,23 @@ func newStream(
 	}, nil
 }
 
+// shouldTrainPatterns evaluates an opinionated set of rules to whether to use this line to train patterns.
+func (s *stream) shouldTrainPatterns(entry *logproto.Entry) bool {
+	if len(entry.Line) < 10 {
+		// Skip short lines
+		return false
+	}
+	if entry.Line[0] == '{' && entry.Line[len(entry.Line)-1] == '}' {
+		// Skip lines that look like JSON as they aren't intended to be human readable and don't give good patterns.
+		return false
+	}
+	if _, ok := bannedServiceNames[s.labels.Get("service_name")]; ok {
+		// Skip lines from services that we know are too noisy.
+		return false
+	}
+	return true
+}
+
 func (s *stream) Push(
 	_ context.Context,
 	entries []logproto.Entry,
@@ -53,6 +76,9 @@ func (s *stream) Push(
 			continue
 		}
 		s.lastTs = entry.Timestamp.UnixNano()
+		if !s.shouldTrainPatterns(&entry) {
+			continue
+		}
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil
