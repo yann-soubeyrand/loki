@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ func Test_BuilderLoop(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {
-		return server.completedTasks == len(tasks)
+		return int(server.completedTasks.Load()) == len(tasks)
 	}, 5*time.Second, 100*time.Millisecond)
 
 	err = services.StopAndAwaitTerminated(context.Background(), builder)
@@ -98,7 +99,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 type fakePlannerServer struct {
 	tasks          []*protos.ProtoTask
-	completedTasks int
+	completedTasks atomic.Int64
 	shutdownCalled bool
 
 	addr       string
@@ -148,7 +149,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 		if _, err := srv.Recv(); err != nil {
 			return fmt.Errorf("failed to receive task response: %w", err)
 		}
-		f.completedTasks++
+		f.completedTasks.Add(1)
 	}
 
 	// No more tasks. Wait until shutdown.
