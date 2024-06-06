@@ -1,8 +1,11 @@
 package pattern
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -10,9 +13,13 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 type Tee struct {
@@ -45,6 +52,28 @@ func NewTee(
 	return t, nil
 }
 
+func stringWithoutLabel(ls labels.Labels, label string) string {
+	var b bytes.Buffer
+
+	b.WriteByte('{')
+	i := 0
+	ls.Range(func(l labels.Label) {
+		if l.Name == label {
+			return
+		}
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		b.WriteString(strconv.Quote(l.Value))
+		i++
+	})
+	b.WriteByte('}')
+	return b.String()
+}
+
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
 func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 	for idx := range streams {
@@ -57,6 +86,13 @@ func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 }
 
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
+	if strings.Contains(stream.Stream.Labels, ingester.ShardLbName) {
+		lbls, _ := syntax.ParseLabels(stream.Stream.Labels)
+		newLabels := stringWithoutLabel(lbls, ingester.ShardLbName)
+		stream.HashKey = lokiring.TokenFor(tenant, newLabels)
+		stream.Stream.Labels = newLabels
+		stream.Stream.Hash, _ = lbls.HashWithoutLabels(make([]byte, 0), ingester.ShardLbName)
+	}
 	var descs [1]ring.InstanceDesc
 	replicationSet, err := t.ringClient.ring.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
