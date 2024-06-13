@@ -1017,7 +1017,12 @@ func Test_DedupeIngester(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+
+			it := iter.NewQueryClientIterator(stream, logproto.BACKWARD)
+			it.Close()          // does not have any effect
+			client.conn.Close() // will cause "rpc error: code = Canceled desc = grpc: the client connection is closing"
+
+			iterators = append(iterators, it)
 		}
 		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
 
@@ -1371,6 +1376,7 @@ func TestVolume(t *testing.T) {
 type ingesterClient struct {
 	logproto.PusherClient
 	logproto.QuerierClient
+	conn *grpc.ClientConn
 }
 
 func createIngesterSets(t *testing.T, config Config, count int) ([]ingesterClient, func()) {
@@ -1419,6 +1425,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	return ingesterClient{
 			PusherClient:  logproto.NewPusherClient(conn),
 			QuerierClient: logproto.NewQuerierClient(conn),
+			conn:          conn,
 		}, func() {
 			_ = services.StopAndAwaitTerminated(context.Background(), ing)
 			server.Stop()
