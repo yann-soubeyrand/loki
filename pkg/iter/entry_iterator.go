@@ -372,6 +372,9 @@ func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logpr
 
 func (i *queryClientIterator) Next() bool {
 	ctx := i.client.Context()
+	if ctx.Err() != nil {
+		return false
+	}
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
