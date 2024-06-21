@@ -56,19 +56,13 @@ func (s *recalculateOwnedStreams) recalculate() {
 		return
 	}
 	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
-	ownedTokenRange, err := s.getTokenRangesForIngester()
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get token ranges for ingester", "err", err)
-		s.resetRingState()
-		return
-	}
 
 	for _, instance := range s.instancesSupplier() {
 		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
 			continue
 		}
 
-		instance.updateOwnedStreams(ownedTokenRange)
+		instance.updateOwnedStreamsFromRing(s.ingestersRing, s.ingesterID)
 	}
 }
 
