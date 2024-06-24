@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/grafana/regexp"
@@ -14,6 +16,7 @@ import (
 type BloomTest interface {
 	Matches(bloom filter.Checker) bool
 	MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool
+	Repr() string
 }
 
 type BloomTests []BloomTest
@@ -34,6 +37,14 @@ func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 		}
 	}
 	return true
+}
+
+func (b BloomTests) Repr() string {
+	var repr []string
+	for _, test := range b {
+		repr = append(repr, test.Repr())
+	}
+	return fmt.Sprintf("(%s)", strings.Join(repr, " AND "))
 }
 
 // ExtractTestableLineFilters extracts all line filters from an expression
@@ -172,6 +183,10 @@ func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bo
 	return true
 }
 
+func (n matchAllTest) Repr() string {
+	return "MATCH_ALL"
+}
+
 // NGramBuilder is an interface for tokenizing strings into ngrams
 // Extracting this interface allows us to test the bloom filter without having to use the actual tokenizer
 // TODO: This should be moved to tokenizer.go
@@ -241,6 +256,14 @@ func (b stringTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefi
 	return true
 }
 
+func (b stringTest) Repr() string {
+	var repr []string
+	for _, ngram := range b.ngrams {
+		repr = append(repr, string(ngram))
+	}
+	return fmt.Sprintf("NGRAMS(%s)", strings.Join(repr, " && "))
+}
+
 type stringMatcherFilter struct {
 	test BloomTest
 }
@@ -289,6 +312,10 @@ func (o orTest) Matches(bloom filter.Checker) bool {
 
 func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+}
+
+func (o orTest) Repr() string {
+	return fmt.Sprintf("(%s OR %s)", o.left.Repr(), o.right.Repr())
 }
 
 func newPatternTest(b NGramBuilder, match string) BloomTest {

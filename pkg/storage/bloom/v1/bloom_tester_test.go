@@ -30,6 +30,53 @@ func (f fakeBloom) Test(data []byte) bool {
 	return false
 }
 
+func TestExtractTestableLineFilters(t *testing.T) {
+	// All tested on 3skip0
+	n := 2
+	skip := 0
+	tokenizer := NewNGramTokenizer(n, skip)
+
+	for _, tc := range []struct {
+		descr string
+		query string
+		repr  string
+	}{
+		{
+			descr: "single string matcher",
+			query: `{app="fake"} |= "foo"`,
+			repr:  "(NGRAMS(fo && oo))",
+		},
+		{
+			descr: "multiple string matchers",
+			query: `{app="fake"} |= "foo" |= "barbaz"`,
+			repr:  "((NGRAMS(fo && oo)) AND NGRAMS(ba && ar && rb && ba && az))",
+		},
+		{
+			descr: "multiple string matchers with OR",
+			query: `{app="fake"} |= "foo" OR "bar" |= "one" OR "two"`,
+			repr:  "((((NGRAMS(ba && ar)) OR NGRAMS(fo && oo))) AND ((NGRAMS(tw && wo)) OR NGRAMS(on && ne)))",
+		},
+		{
+			descr: "regexp matches all",
+			query: `{app="fake"} |~ "foo"`,
+			repr:  "(MATCH_ALL)",
+		},
+		{
+			descr: "regexp and string matcher",
+			query: `{app="fake"} |~ "foo" |= "bar"`,
+			repr:  "((MATCH_ALL) AND NGRAMS(ba && ar))",
+		},
+	} {
+		t.Run(tc.descr, func(t *testing.T) {
+			expr, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+			filters := ExtractTestableLineFilters(expr)
+			test := FiltersToBloomTest(tokenizer, filters...)
+			require.Equal(t, tc.repr, test.Repr())
+		})
+	}
+}
+
 func TestBloomQueryingLogic(t *testing.T) {
 	// All tested on 4skip1
 	n := 4
