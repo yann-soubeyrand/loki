@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -27,11 +29,47 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var (
-	fp uint64 = 6432507678569559861
-)
+func parseDayTime(s string) (dt config.DayTime, err error) {
+	t, err := time.ParseInLocation("2006-01-02", s, time.UTC)
+	if err != nil {
+		return dt, err
+	}
+	return config.DayTime{
+		Time: model.TimeFromUnix(t.Unix()),
+	}, nil
+}
+
+func exitWithError(err string, args ...any) {
+	fmt.Fprintf(os.Stderr, err, args...)
+	os.Exit(1)
+}
 
 func main() {
+
+	envFp := os.Getenv("FINGERPRINT") //  "6432507678569559861"
+	if envFp == "" {
+		exitWithError("env FINGERPRINT is required")
+	}
+
+	fp, err := strconv.ParseUint(envFp, 10, 64)
+	if err != nil {
+		exitWithError("failed to parse %s as uint64", envFp)
+	}
+
+	envTSDBIdent := os.Getenv("TSDB_IDENT") // "1719239625351731308-compactor-1718989696611-1719238677995-6b42663f.tsdb"
+	if envTSDBIdent == "" {
+		exitWithError("env TSBD_IDENT is required")
+	}
+
+	envDate := os.Getenv("DATE") // "2024-06-23"
+	if envDate == "" {
+		exitWithError("env DATE is required")
+	}
+
+	dayTime, err := parseDayTime(envDate)
+	if err != nil {
+		exitWithError("failed to parse %s as DayTime", envDate)
+	}
 
 	logger := log.NewLogfmtLogger(os.Stderr)
 	logger = log.With(logger, "component", "bloom-builder")
@@ -42,9 +80,9 @@ func main() {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
+
 	if err := cfg.DynamicUnmarshal(&LokiCfg, os.Args[1:], flag.CommandLine); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
-		os.Exit(1)
+		exitWithError("failed parsing config: %v\n", err)
 	}
 
 	// Set the global OTLP config which is needed in per tenant otlp config
@@ -120,7 +158,7 @@ func main() {
 
 	bounds := v1.NewBounds(model.Fingerprint(fp), model.Fingerprint(fp))
 
-	tsdbIdentifier, ok := tsdb.ParseSingleTenantTSDBPath("1719239625351731308-compactor-1718989696611-1719238677995-6b42663f.tsdb")
+	tsdbIdentifier, ok := tsdb.ParseSingleTenantTSDBPath(envTSDBIdent)
 	if !ok {
 		level.Info(logger).Log("msg", "failed to parse TSDB path")
 		os.Exit(1)
@@ -128,8 +166,8 @@ func main() {
 
 	task := protos.NewTask(
 		config.DayTable{
-			DayTime: config.NewDayTime(1719184119522),
-			Prefix:  "loki_ops_tsdb_index_", // should be taken from schema config
+			DayTime: dayTime,
+			Prefix:  app.Cfg.SchemaConfig.Configs[len(app.Cfg.SchemaConfig.Configs)-1].IndexTables.Prefix,
 		},
 		"29",
 		bounds,
