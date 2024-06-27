@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -254,6 +255,20 @@ func (b *Builder) processTask(ctx context.Context, protoTask *protos.ProtoTask) 
 	return b.Process(ctx, task)
 }
 
+func putBlock(block bloomshipper.Block) error {
+	key := block.String()
+	defer block.Data.Close()
+	client, err := local.NewFSObjectClient(local.FSConfig{Directory: "/tmp/blooms"})
+	if err != nil {
+		return err
+	}
+	_, err = block.Data.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+	return client.PutObject(context.TODO(), key, block.Data)
+}
+
 // processTask generates the blooms blocks and metas and uploads them to the object storage.
 // Now that we have the gaps, we will generate a bloom block for each gap.
 // We can accelerate this by using existing blocks which may already contain
@@ -360,11 +375,11 @@ func (b *Builder) Process(ctx context.Context, task *protos.Task) ([]bloomshippe
 
 			logger := log.With(logger, "block", built.BlockRef.String())
 
-			level.Info(logger).Log("msg", "-----------------------------------------------------")
 			level.Info(logger).Log("msg", "client.PutBlock()")
-			level.Info(logger).Log("msg", "-----------------------------------------------------")
-
-			// fp, err := os.Create("")
+			err = putBlock(built)
+			if err != nil {
+				return nil, err
+			}
 
 			// if err := client.PutBlock(
 			// 	ctx,
@@ -404,9 +419,7 @@ func (b *Builder) Process(ctx context.Context, task *protos.Task) ([]bloomshippe
 
 		logger = log.With(logger, "meta", meta.MetaRef.String())
 
-		level.Info(logger).Log("msg", "-----------------------------------------------------")
 		level.Info(logger).Log("msg", "client.PutMeta()")
-		level.Info(logger).Log("msg", "-----------------------------------------------------")
 		// if err := client.PutMeta(ctx, meta); err != nil {
 		// 	level.Error(logger).Log("msg", "failed to write meta", "err", err)
 		// 	return nil, fmt.Errorf("failed to write meta: %w", err)
