@@ -246,6 +246,14 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 	return nil
 }
 
+func (b *Builder) processTask(ctx context.Context, protoTask *protos.ProtoTask) ([]bloomshipper.Meta, error) {
+	task, err := protos.FromProtoTask(protoTask)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert proto task to task: %w", err)
+	}
+	return b.Process(ctx, task)
+}
+
 // processTask generates the blooms blocks and metas and uploads them to the object storage.
 // Now that we have the gaps, we will generate a bloom block for each gap.
 // We can accelerate this by using existing blocks which may already contain
@@ -255,20 +263,12 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 // overlapping the ownership ranges we've identified as needing updates.
 // With these in hand, we can download the old blocks and use them to
 // accelerate bloom generation for the new blocks.
-func (b *Builder) processTask(
-	ctx context.Context,
-	protoTask *protos.ProtoTask,
-) ([]bloomshipper.Meta, error) {
-	task, err := protos.FromProtoTask(protoTask)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert proto task to task: %w", err)
-	}
-
-	client, err := b.bloomStore.Client(task.Table.ModelTime())
-	if err != nil {
-		level.Error(b.logger).Log("msg", "failed to get client", "err", err)
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
+func (b *Builder) Process(ctx context.Context, task *protos.Task) ([]bloomshipper.Meta, error) {
+	// client, err := b.bloomStore.Client(task.Table.ModelTime())
+	// if err != nil {
+	// 	level.Error(b.logger).Log("msg", "failed to get client", "err", err)
+	// 	return nil, fmt.Errorf("failed to get client: %w", err)
+	// }
 
 	tenant := task.Tenant
 	logger := log.With(
@@ -360,13 +360,19 @@ func (b *Builder) processTask(
 
 			logger := log.With(logger, "block", built.BlockRef.String())
 
-			if err := client.PutBlock(
-				ctx,
-				built,
-			); err != nil {
-				level.Error(logger).Log("msg", "failed to write block", "err", err)
-				return nil, fmt.Errorf("failed to write block: %w", err)
-			}
+			level.Info(logger).Log("msg", "-----------------------------------------------------")
+			level.Info(logger).Log("msg", "client.PutBlock()")
+			level.Info(logger).Log("msg", "-----------------------------------------------------")
+
+			// fp, err := os.Create("")
+
+			// if err := client.PutBlock(
+			// 	ctx,
+			// 	built,
+			// ); err != nil {
+			// 	level.Error(logger).Log("msg", "failed to write block", "err", err)
+			// 	return nil, fmt.Errorf("failed to write block: %w", err)
+			// }
 			b.metrics.blocksCreated.Inc()
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
@@ -398,10 +404,13 @@ func (b *Builder) processTask(
 
 		logger = log.With(logger, "meta", meta.MetaRef.String())
 
-		if err := client.PutMeta(ctx, meta); err != nil {
-			level.Error(logger).Log("msg", "failed to write meta", "err", err)
-			return nil, fmt.Errorf("failed to write meta: %w", err)
-		}
+		level.Info(logger).Log("msg", "-----------------------------------------------------")
+		level.Info(logger).Log("msg", "client.PutMeta()")
+		level.Info(logger).Log("msg", "-----------------------------------------------------")
+		// if err := client.PutMeta(ctx, meta); err != nil {
+		// 	level.Error(logger).Log("msg", "failed to write meta", "err", err)
+		// 	return nil, fmt.Errorf("failed to write meta: %w", err)
+		// }
 
 		b.metrics.metasCreated.Inc()
 		level.Debug(logger).Log("msg", "uploaded meta")

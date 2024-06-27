@@ -457,7 +457,7 @@ func (c *Compactor) runWorkers(
 func (c *Compactor) compactTenantTable(ctx context.Context, tt *tenantTableRange, tracker *compactionTracker) error {
 	level.Info(c.logger).Log("msg", "compacting", "org_id", tt.tenant, "table", tt.table, "ownership", tt.ownershipRange.String())
 	tt.startTime = time.Now()
-	err := c.controller.compactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange, tracker)
+	err := c.controller.CompactTenant(ctx, tt.table, tt.tenant, tt.ownershipRange, tracker)
 	tt.finished = true
 	tt.endTime = time.Now()
 	tracker.update(tt.tenant, tt.table.DayTime, tt.ownershipRange, tt.ownershipRange.Max)

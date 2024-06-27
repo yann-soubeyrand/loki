@@ -717,9 +717,9 @@ func (t *Loki) initStore() (services.Service, error) {
 func (t *Loki) initBloomStore() (services.Service, error) {
 	// BloomStore is a dependency of IndexGateway and Bloom Planner & Builder.
 	// Do not instantiate store and do not create a service if neither ar enabled.
-	if !t.Cfg.BloomGateway.Enabled && !t.Cfg.BloomBuild.Enabled {
-		return nil, nil
-	}
+	// if !t.Cfg.BloomGateway.Enabled && !t.Cfg.BloomBuild.Enabled {
+	// 	return nil, nil
+	// }
 
 	if !config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		return nil, errors.New("not using shipper index type")

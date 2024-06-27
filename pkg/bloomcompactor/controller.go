@@ -68,7 +68,7 @@ Compaction works as follows, split across many functions for clarity:
  6. Determine if any meta.jsons overlap the ownership range but are outdated, and remove them and
     their associated blocks if so.
 */
-func (s *SimpleBloomController) compactTenant(
+func (s *SimpleBloomController) CompactTenant(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
