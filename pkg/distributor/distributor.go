@@ -517,6 +517,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if err != nil {
 				return err
 			}
+			if strings.Contains(stream.Stream.Labels, "folderUID") {
+				instanceIds := make([]string, 0, 3)
+				for _, instance := range replicationSet.Instances {
+					instanceIds = append(instanceIds, instance.Id)
+				}
+				level.Info(d.logger).Log("msg", "original stream labels", "tenant", tenantID, "lbls", stream.Stream.Labels, "instances", strings.Join(instanceIds, ", "))
+			}
 
 			streamTrackers[i] = streamTracker{
 				KeyedStream: stream,
