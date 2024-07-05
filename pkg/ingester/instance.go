@@ -356,7 +356,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
 	// we count newly created stream as owned
-	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.labelsString)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -1192,7 +1192,7 @@ func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID str
 				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
 			}
 			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
-			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.labelsString)
 			return true, nil
 		})
 	})

@@ -129,7 +129,7 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 
 	lastChunk := stream.chunks[len(stream.chunks)-1]
 	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
-	if len(stream.chunks) == 1 && !immediate && !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp) {
+	if len(stream.chunks) == 1 && !immediate && !shouldFlush && !instance.ownedStreamsSvc.isStreamNotOwned(stream.fp, stream.labelsString) {
 		return
 	}
 
@@ -245,7 +245,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 
 	stream.chunkMtx.Lock()
 	defer stream.chunkMtx.Unlock()
-	notOwnedStream := instance.ownedStreamsSvc.isStreamNotOwned(fp)
+	notOwnedStream := instance.ownedStreamsSvc.isStreamNotOwned(fp, stream.labelsString)
 
 	var result []*chunkDesc
 	for j := range stream.chunks {

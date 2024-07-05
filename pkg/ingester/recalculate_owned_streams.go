@@ -49,11 +49,16 @@ func (s *recalculateOwnedStreams) recalculate() {
 		level.Error(s.logger).Log("msg", "failed to check ring for changes", "err", err)
 		return
 	}
-	if !ringChanged {
+	notOwnedStreamsExist := nowOwnedStreamsCount.Load() > 0
+	if !ringChanged && !notOwnedStreamsExist {
 		level.Debug(s.logger).Log("msg", "ring is not changed, skipping the job")
 		return
 	}
-	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
+	if notOwnedStreamsExist {
+		level.Info(s.logger).Log("msg", "ingester still contains not owned streams, re-evaluating streams ownership")
+	} else {
+		level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
+	}
 
 	for _, instance := range s.instancesSupplier() {
 		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
