@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -1187,11 +1188,19 @@ func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID str
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
+
 			replicationSet, err := ingesterRing.Get(lokiring.TokenFor(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
 			if err != nil {
 				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
 			}
 			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
+			if strings.Contains(s.labelsString, "folderUID") {
+				instanceIds := make([]string, 0, 3)
+				for _, instance := range replicationSet.Instances {
+					instanceIds = append(instanceIds, instance.Id)
+				}
+				level.Info(util_log.Logger).Log("msg", "checking ownership for a stream with instances", "tenant", i.instanceID, "lbls", s.labelsString, "instances", strings.Join(instanceIds, ", "), "owned", ownedStream, "ingesterID", ingesterID)
+			}
 			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.labelsString)
 			return true, nil
 		})
