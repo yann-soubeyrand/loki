@@ -164,7 +164,7 @@ func (r *batchRangeVectorIterator) popBack(newStart int64) {
 // load the next sample range window.
 func (r *batchRangeVectorIterator) load(start, end int64) {
 	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
-		if sample.Timestamp > end {
+		if sample.Timestamp >= end {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
@@ -559,7 +559,7 @@ func (r *streamRangeVectorIterator) Error() error {
 // load the next sample range window.
 func (r *streamRangeVectorIterator) load(start, end int64) {
 	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
-		if sample.Timestamp > end {
+		if sample.Timestamp >= end {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
