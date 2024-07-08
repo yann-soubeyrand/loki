@@ -168,8 +168,9 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
+		// NOTE(chaudum): Why?
 		// the lower bound of the range is not inclusive
-		if sample.Timestamp <= start {
+		if sample.Timestamp < start {
 			_ = r.iter.Next()
 			continue
 		}
@@ -562,8 +563,9 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
+		// NOTE(chaudum): Why?
 		// the lower bound of the range is not inclusive
-		if sample.Timestamp <= start {
+		if sample.Timestamp < start {
 			_ = r.iter.Next()
 			continue
 		}

@@ -216,6 +216,64 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 	}
 
 }
+func Test_RangeVectorIteratorForInstantQuery(t *testing.T) {
+
+	ts := time.Date(2024, 7, 3, 22, 0, 0, 0, time.UTC)
+
+	samples := []logproto.Sample{
+		{Timestamp: ts.UnixNano(), Hash: 1, Value: 1.},
+	}
+
+	tests := []struct {
+		selRange       int64
+		step           int64
+		offset         int64
+		start, end     time.Time
+		expectedVector promql.Vector
+		expectedTs     time.Time
+	}{
+		{
+			selRange: (1 * time.Hour).Nanoseconds(),
+			step:     0,
+			offset:   0,
+			start:    ts.Add(-1 * time.Hour),
+			end:      ts,
+			expectedVector: []promql.Sample{
+				newSample(ts, 1, labelBar),
+				newSample(ts, 1, labelFoo),
+			},
+			expectedTs: ts.Add(-1 * time.Hour),
+		},
+		{
+			selRange: (1 * time.Hour).Nanoseconds(),
+			step:     0,
+			offset:   0,
+			start:    ts,
+			end:      ts.Add(1 * time.Hour),
+			expectedVector: []promql.Sample{
+				newSample(ts, 1, labelBar),
+				newSample(ts, 1, labelFoo),
+			},
+			expectedTs: ts,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			fmt.Sprintf("logs[%s] - step: %s - offset: %s", time.Duration(tt.selRange), time.Duration(tt.step), time.Duration(tt.offset)),
+			func(t *testing.T) {
+				it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
+					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
+					tt.step, tt.start.UnixNano(), tt.end.UnixNano(), tt.offset)
+				require.NoError(t, err)
+
+				it.Next()
+				ts, v := it.At()
+				require.ElementsMatch(t, tt.expectedVector, v)
+				require.Equal(t, tt.expectedTs.UnixNano()/1e+6, ts)
+			})
+	}
+}
 
 func Test_RangeVectorIterator(t *testing.T) {
 	tests := []struct {
