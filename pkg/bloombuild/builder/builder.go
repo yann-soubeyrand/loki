@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -492,7 +493,8 @@ func (b *Builder) loadWorkForGap(
 }
 
 func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
-	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
+	dir := filepath.Join(b.cfg.WorkingDir, "blocks", uuid.NewString())
+	err := os.Mkdir(dir, 0755)
 	if err != nil {
 		panic(err)
 	}

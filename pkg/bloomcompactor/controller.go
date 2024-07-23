@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -50,7 +52,8 @@ func NewSimpleBloomController(
 }
 
 func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
-	dir, err := os.MkdirTemp("", "bloom-block-")
+	dir := filepath.Join(os.TempDir(), "blocks", uuid.NewString())
+	err := os.Mkdir(dir, 0755)
 	if err != nil {
 		panic(err)
 	}
