@@ -2,6 +2,7 @@ package v1
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -171,5 +172,6 @@ func (r *DirectoryBlockReader) Cleanup() error {
 	err.Add(os.Remove(r.index.Name()))
 	err.Add(os.Remove(r.blooms.Name()))
 	err.Add(os.RemoveAll(r.dir))
+	fmt.Println("reader", "delete block directory", r.dir, err.Err().Error())
 	return err.Err()
 }
