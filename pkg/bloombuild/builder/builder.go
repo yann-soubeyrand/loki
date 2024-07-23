@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,6 +25,7 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -494,7 +494,7 @@ func (b *Builder) loadWorkForGap(
 
 func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
 	dir := filepath.Join(b.cfg.WorkingDir, "blocks", uuid.NewString())
-	err := os.Mkdir(dir, 0755)
+	err := util.EnsureDirectory(dir)
 	if err != nil {
 		panic(err)
 	}

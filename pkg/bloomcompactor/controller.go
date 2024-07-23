@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
@@ -53,7 +54,7 @@ func NewSimpleBloomController(
 
 func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
 	dir := filepath.Join(os.TempDir(), "blocks", uuid.NewString())
-	err := os.Mkdir(dir, 0755)
+	err := util.EnsureDirectory(dir)
 	if err != nil {
 		panic(err)
 	}
