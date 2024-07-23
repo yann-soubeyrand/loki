@@ -435,6 +435,9 @@ func (s *SimpleBloomController) buildGaps(
 				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
+					if err = blk.Reader().Cleanup(); err != nil {
+						level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+					}
 					return nil, errors.Wrap(err, "failed to build block")
 				}
 
@@ -443,9 +446,16 @@ func (s *SimpleBloomController) buildGaps(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					if err = blk.Reader().Cleanup(); err != nil {
+						level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+					}
 					return nil, errors.Wrap(err, "failed to write block")
 				}
 				s.metrics.blocksCreated.Inc()
+
+				if err := blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 
 				totalGapKeyspace := (gap.bounds.Max - gap.bounds.Min)
 				progress := (built.Bounds.Max - gap.bounds.Min)
