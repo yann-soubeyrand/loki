@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/gorilla/mux"
+	"github.com/grafana/loki/v3/pkg/validation"
 	"gopkg.in/yaml.v2"
 )
 
@@ -110,6 +112,21 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		writeYAMLResponse(w, output)
+	}
+}
+
+func limitsEndpointHandlerFn(limits validation.TenantLimits) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		tenant := vars["tenant"]
+		tenantLim := limits.TenantLimits(tenant)
+
+		if tenantLim == nil {
+			http.Error(w, fmt.Sprintf("tenant %s not found", tenant), http.StatusNotFound)
+			return
+		}
+
+		writeYAMLResponse(w, tenantLim)
 	}
 }
 

@@ -457,6 +457,11 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 }
 
+func (t *Loki) bindTenantLimitsEndpoint() {
+	handler := limitsEndpointHandlerFn(t.TenantLimits)
+	t.Server.HTTP.Path("/limits/{tenant}").Methods("GET").HandlerFunc(handler)
+}
+
 // ListTargets prints a list of available user visible targets and their
 // dependencies
 func (t *Loki) ListTargets() {
@@ -516,6 +521,9 @@ func (t *Loki) Run(opts RunOpts) error {
 
 	// Config endpoint adds a way to see the config and the changes compared to the defaults.
 	t.bindConfigEndpoint(opts)
+
+	// Limits endpoint adds a way to see the limits for a tenant.
+	t.bindTenantLimitsEndpoint()
 
 	// Each component serves its version.
 	if t.Cfg.InternalServer.Enable {
