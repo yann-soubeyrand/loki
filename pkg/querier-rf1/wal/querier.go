@@ -146,13 +146,16 @@ func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQ
 	ms = append(ms, matchers...)
 	ms = append(ms, labels.MustNewMatcher(labels.MatchEqual, index.TenantLabel, req.TenantId))
 
-	return q.forIndices(ctx, req, func(ir *index.Reader, id string) error {
+	unusedIndex := 0
+	totalIndex := 0
+	err := q.forIndices(ctx, req, func(ir *index.Reader, id string) error {
 		bufLbls := labels.ScratchBuilder{}
 		chunks := make([]chunks.Meta, 0, 1)
 		p, err := ir.PostingsForMatchers(ctx, ms...)
 		if err != nil {
 			return err
 		}
+		count := 0
 		for p.Next() {
 			err := ir.Series(p.At(), &bufLbls, &chunks)
 			if err != nil {
@@ -161,9 +164,17 @@ func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQ
 			if err := fn(id, &bufLbls, &chunks[0]); err != nil {
 				return err
 			}
+			count += 1
+		}
+		totalIndex++
+		if count == 0 {
+			unusedIndex++
 		}
 		return p.Err()
 	})
+	sp := opentracing.SpanFromContext(ctx)
+	sp.LogKV("unusedIndices", unusedIndex, "totalIndices", totalIndex)
+	return err
 }
 
 func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksForQueryRequest, fn func(ir *index.Reader, id string) error) error {
