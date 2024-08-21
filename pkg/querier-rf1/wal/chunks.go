@@ -288,8 +288,6 @@ func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 }
 
 func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "downloadChunks")
-	sp.LogKV("batchSize", len(chks))
 	data := make([][]byte, len(chks))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(64)
@@ -313,7 +311,10 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 }
 
 func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) ([]byte, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "readChunkData")
+	defer sp.Finish()
 	offset, size := chunk.meta.Ref.Unpack()
+	sp.LogKV("chunk", chunk.id, "offset", offset, "size", size)
 	// todo: We should be able to avoid many IOPS to object storage
 	// if chunks are next to each other and we should be able to pack range request
 	// together.
