@@ -5,6 +5,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"math"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -206,13 +207,13 @@ func (bt *BloomTokenizer) sendBloom(
 // Therefore, we index entire lines into a bloom to ensure a lookups are accurate.
 func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
-		//tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
-		tokens            int
-		successfulInserts int
-		cachedInserts     int
-		collisionInserts  int
-		chunkBytes        int
-		linesAdded        int
+		tokenBuf, prefixLn = prefixedToken(0, ref, make([]byte, 0, 100))
+		tokens             int
+		successfulInserts  int
+		cachedInserts      int
+		collisionInserts   int
+		chunkBytes         int
+		linesAdded         int
 	)
 
 	// We use a peeking iterator to avoid advancing the iterator until we're sure the bloom has accepted the line.
@@ -223,43 +224,58 @@ outer:
 
 		for _, i := range entry.StructuredMetadata {
 			// TODO: reuse buffer
-			str := fmt.Sprintf("%s=%s", i.Name, i.Value)
+			encoded := fmt.Sprintf("%s=%s", i.Name, i.Value)
 
-			chunkBytes += len(str)
+			chunkBytes += len(encoded)
 
-			// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-			if _, found := bt.cache[str]; found {
-				cachedInserts++
-				continue
-			}
+			tokenItr := v2iter.NewSliceIter([][]byte{
+				// raw structured metadata
+				[]byte(encoded),
+				// chunk prefixed structured metadata
+				append(tokenBuf[:prefixLn], []byte(encoded)...),
+			})
 
-			// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
-			var collision bool
-			collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize([]byte(str), bt.maxBloomSize*eightBits)
+			for tokenItr.Next() {
+				tok := tokenItr.At()
+				tokens++
 
-			if full {
-				// edge case: one line maxed out the bloom size -- retrying is futile
-				// (and will loop endlessly), so we'll just skip indexing it
-				if linesAdded == 0 {
-					level.Warn(bt.logger).Log("msg", "line too large for bloom filter", "line", str)
-					_ = entryIter.Next()
+				str := unsafe.String(unsafe.SliceData(tok), len(tok))
+
+				// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if _, found := bt.cache[str]; found {
+					cachedInserts++
+					continue
 				}
 
-				break outer
+				// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
+				var collision bool
+				collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize([]byte(str), bt.maxBloomSize*eightBits)
+
+				if full {
+					// edge case: one line maxed out the bloom size -- retrying is futile
+					// (and will loop endlessly), so we'll just skip indexing it
+					if linesAdded == 0 {
+						level.Warn(bt.logger).Log("msg", "line too large for bloom filter", "line", str)
+						_ = entryIter.Next()
+					}
+
+					break outer
+				}
+
+				if collision {
+					collisionInserts++
+				} else {
+					successfulInserts++
+				}
+
+				// only register the key in the cache if it was successfully added to the bloom
+				// as can prevent us from trying subsequent copies
+				bt.cache[str] = nil
+				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+					clear(bt.cache)
+				}
 			}
 
-			if collision {
-				collisionInserts++
-			} else {
-				successfulInserts++
-			}
-
-			// only register the key in the cache if it was successfully added to the bloom
-			// as can prevent us from trying subsequent copies
-			bt.cache[str] = nil
-			if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-				clear(bt.cache)
-			}
 		}
 
 		//tokenItrs := []v2iter.Iterator[[]byte]{
