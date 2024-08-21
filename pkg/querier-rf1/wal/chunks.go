@@ -40,10 +40,11 @@ func newChunkData(id string, lbs *labels.ScratchBuilder, meta *chunks.Meta) Chun
 		}
 	}
 	newLbs = newLbs[:j]
+	o, l := meta.Ref.Unpack()
 	return ChunkData{
 		id: id,
 		meta: &chunks.Meta{ // incoming Meta is from a shared buffer, so create a new one
-			Ref:     meta.Ref,
+			Ref:     chunks.NewChunkRef(uint64(o), uint64(l)),
 			MinTime: meta.MinTime,
 			MaxTime: meta.MaxTime,
 		},
