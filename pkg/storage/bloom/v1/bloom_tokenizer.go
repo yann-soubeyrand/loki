@@ -241,6 +241,7 @@ outer:
 				// edge case: one line maxed out the bloom size -- retrying is futile
 				// (and will loop endlessly), so we'll just skip indexing it
 				if linesAdded == 0 {
+					level.Warn(bt.logger).Log("msg", "line too large for bloom filter", "line", str)
 					_ = entryIter.Next()
 				}
 
@@ -291,6 +292,7 @@ outer:
 		//			// edge case: one line maxed out the bloom size -- retrying is futile
 		//			// (and will loop endlessly), so we'll just skip indexing it
 		//			if linesAdded == 0 {
+		//              level.Warn(bt.logger).Log("msg", "line too large for bloom filter", "line", str, "tok", string(tok))
 		//				_ = entryIter.Next()
 		//			}
 		//
