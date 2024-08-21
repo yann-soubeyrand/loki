@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	BloomPrefix  = "bloom"
+	BloomPrefix  = "bloom-new"
 	MetasPrefix  = "metas"
 	BlocksPrefix = "blocks"
 

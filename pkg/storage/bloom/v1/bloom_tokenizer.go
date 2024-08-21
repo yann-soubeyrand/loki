@@ -1,11 +1,10 @@
 package v1
 
 import (
-	"math"
-	"unsafe"
-
+	"fmt"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"math"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -207,72 +206,112 @@ func (bt *BloomTokenizer) sendBloom(
 // Therefore, we index entire lines into a bloom to ensure a lookups are accurate.
 func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
-		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
-		tokens             int
-		successfulInserts  int
-		cachedInserts      int
-		collisionInserts   int
-		chunkBytes         int
-		linesAdded         int
+		//tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
+		tokens            int
+		successfulInserts int
+		cachedInserts     int
+		collisionInserts  int
+		chunkBytes        int
+		linesAdded        int
 	)
 
 	// We use a peeking iterator to avoid advancing the iterator until we're sure the bloom has accepted the line.
 outer:
 	for entry, ok := entryIter.Peek(); ok; entry, ok = entryIter.Peek() {
-		line := entry.Line
-		chunkBytes += len(line)
+		//line := entry.Line
+		//chunkBytes += len(line)
 
-		tokenItrs := []v2iter.Iterator[[]byte]{
-			// two iterators, one for the raw tokens and one for the chunk prefixed tokens.
-			// Warning: the underlying line tokenizer (used in both iterators) uses the same buffer for tokens.
-			// They are NOT SAFE for concurrent use.
-			NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line)),
-			bt.lineTokenizer.Tokens(line),
-		}
+		for _, i := range entry.StructuredMetadata {
+			// TODO: reuse buffer
+			str := fmt.Sprintf("%s=%s", i.Name, i.Value)
 
-		for _, itr := range tokenItrs {
-			for itr.Next() {
-				tok := itr.At()
-				tokens++
+			chunkBytes += len(str)
 
-				// TODO[owen-d]: [n]byte this
-				// To avoid allocations, an unsafe string can be used to check ownership in cache.
-				str := unsafe.String(unsafe.SliceData(tok), len(tok))
-				// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-				if _, found := bt.cache[str]; found {
-					cachedInserts++
-					continue
+			// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+			if _, found := bt.cache[str]; found {
+				cachedInserts++
+				continue
+			}
+
+			// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
+			var collision bool
+			collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize([]byte(str), bt.maxBloomSize*eightBits)
+
+			if full {
+				// edge case: one line maxed out the bloom size -- retrying is futile
+				// (and will loop endlessly), so we'll just skip indexing it
+				if linesAdded == 0 {
+					_ = entryIter.Next()
 				}
 
-				// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
-				var collision bool
-				collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize(tok, bt.maxBloomSize*eightBits)
+				break outer
+			}
 
-				if full {
-					// edge case: one line maxed out the bloom size -- retrying is futile
-					// (and will loop endlessly), so we'll just skip indexing it
-					if linesAdded == 0 {
-						_ = entryIter.Next()
-					}
+			if collision {
+				collisionInserts++
+			} else {
+				successfulInserts++
+			}
 
-					break outer
-				}
-
-				if collision {
-					collisionInserts++
-				} else {
-					successfulInserts++
-				}
-
-				// only register the key in the cache if it was successfully added to the bloom
-				// as can prevent us from trying subsequent copies
-				str = string(tok)
-				bt.cache[str] = nil
-				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-					clear(bt.cache)
-				}
+			// only register the key in the cache if it was successfully added to the bloom
+			// as can prevent us from trying subsequent copies
+			bt.cache[str] = nil
+			if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+				clear(bt.cache)
 			}
 		}
+
+		//tokenItrs := []v2iter.Iterator[[]byte]{
+		//	// two iterators, one for the raw tokens and one for the chunk prefixed tokens.
+		//	// Warning: the underlying line tokenizer (used in both iterators) uses the same buffer for tokens.
+		//	// They are NOT SAFE for concurrent use.
+		//	NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line)),
+		//	bt.lineTokenizer.Tokens(line),
+		//}
+
+		//for _, itr := range tokenItrs {
+		//	for itr.Next() {
+		//		tok := itr.At()
+		//		tokens++
+		//
+		//		// TODO[owen-d]: [n]byte this
+		//		// To avoid allocations, an unsafe string can be used to check ownership in cache.
+		//		str := unsafe.String(unsafe.SliceData(tok), len(tok))
+		//		// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+		//		if _, found := bt.cache[str]; found {
+		//			cachedInserts++
+		//			continue
+		//		}
+		//
+		//		// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
+		//		var collision bool
+		//		collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize(tok, bt.maxBloomSize*eightBits)
+		//
+		//		if full {
+		//			// edge case: one line maxed out the bloom size -- retrying is futile
+		//			// (and will loop endlessly), so we'll just skip indexing it
+		//			if linesAdded == 0 {
+		//				_ = entryIter.Next()
+		//			}
+		//
+		//			break outer
+		//		}
+		//
+		//		if collision {
+		//			collisionInserts++
+		//		} else {
+		//			successfulInserts++
+		//		}
+		//
+		//		// only register the key in the cache if it was successfully added to the bloom
+		//		// as can prevent us from trying subsequent copies
+		//		str = string(tok)
+		//		bt.cache[str] = nil
+		//		if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+		//			clear(bt.cache)
+		//		}
+		//	}
+		//}
 
 		// Only advance the iterator once we're sure the bloom has accepted the line
 		linesAdded++

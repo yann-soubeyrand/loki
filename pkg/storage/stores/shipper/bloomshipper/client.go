@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	rootFolder            = "bloom"
+	rootFolder            = "bloom-new"
 	metasFolder           = "metas"
 	bloomsFolder          = "blooms"
 	delimiter             = "/"
