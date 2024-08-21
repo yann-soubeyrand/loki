@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
@@ -238,7 +239,11 @@ func createNextSampleIterator(
 		streamPipeline := pipeline.ForStream(chunk.labels)
 		chunkIterator, err := chunks.NewSampleIterator(data[i], streamPipeline, minT, maxT)
 		if err != nil {
-			return nil, fmt.Errorf("error creating sample iterator: %w", err)
+			sp := opentracing.SpanFromContext(ctx)
+			if sp != nil {
+				sp.LogKV("bad chunk id", chunk.id)
+			}
+			return nil, fmt.Errorf("error creating sample iterator for chunk %s: %w", chunk.id, err)
 		}
 		iterators = append(iterators, chunkIterator)
 	}
@@ -282,6 +287,8 @@ func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 }
 
 func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "downloadChunks")
+	sp.LogKV("batchSize", len(chks))
 	data := make([][]byte, len(chks))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(64)
