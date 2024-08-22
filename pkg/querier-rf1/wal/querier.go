@@ -187,7 +187,7 @@ func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksFor
 		return nil
 	}
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(32)
+	g.SetLimit(128)
 	for _, meta := range metas {
 
 		meta := meta

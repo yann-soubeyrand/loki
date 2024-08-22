@@ -316,7 +316,7 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 		plans = append(plans, &fetchPlan{start: offset, length: size})
 	}
 
-	g.SetLimit(64)
+	g.SetLimit(128)
 	totalFetches := 0
 	for k, v := range plan {
 		totalFetches += len(v)
