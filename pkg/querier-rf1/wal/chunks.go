@@ -2,6 +2,7 @@ package wal
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -240,9 +241,10 @@ func createNextSampleIterator(
 		streamPipeline := pipeline.ForStream(chunk.labels)
 		chunkIterator, err := chunks.NewSampleIterator(data[i], streamPipeline, minT, maxT)
 		if err != nil {
+			o, l := chunk.meta.Ref.Unpack()
 			sp := opentracing.SpanFromContext(ctx)
 			if sp != nil {
-				sp.LogKV("bad chunk id", chunk.id)
+				sp.LogKV("bad chunk id", chunk.id, "size", len(data[i]), "offset", binary.BigEndian.Uint32(data[i][len(data[i])-8:len(data[i])-4]), "chunkref.offset", o, "chunkref.len", l)
 			}
 			return nil, fmt.Errorf("error creating sample iterator for chunk %s: %w", chunk.id, err)
 		}
