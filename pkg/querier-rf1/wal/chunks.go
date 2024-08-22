@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-const defaultBatchSize = 16
+const defaultBatchSize = 128
 
 type ChunkData struct {
 	meta   *chunks.Meta
@@ -291,7 +291,6 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 	data := make([][]byte, len(chks))
 	g, ctx := errgroup.WithContext(ctx)
 
-	sp, _ := opentracing.StartSpanFromContext(ctx, "build plans")
 	plan := map[string][]*fetchPlan{}
 	sort.Slice(chks, func(i, j int) bool {
 		offset, size := chks[i].meta.Ref.Unpack()
@@ -301,7 +300,6 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 		}
 		return size < sizej
 	})
-	sp.Finish()
 
 	for _, chunk := range chks {
 		offset, size := chunk.meta.Ref.Unpack()
@@ -317,9 +315,7 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 		}
 		plans = append(plans, &fetchPlan{start: offset, length: size})
 	}
-	sp.Finish()
 
-	sp, _ = opentracing.StartSpanFromContext(ctx, "fetch data")
 	g.SetLimit(64)
 	totalFetches := 0
 	for k, v := range plan {
@@ -341,9 +337,7 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	sp.Finish()
 
-	sp, _ = opentracing.StartSpanFromContext(ctx, "extract chks")
 	for i, chunk := range chks {
 		for _, fetch := range plan[chunk.id] {
 			offset, size := chunk.meta.Ref.Unpack()
@@ -353,9 +347,8 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 			}
 		}
 	}
-	sp.Finish()
 
-	sp = opentracing.SpanFromContext(ctx)
+	sp := opentracing.SpanFromContext(ctx)
 	if sp != nil {
 		sp.LogKV("totalFetches", totalFetches, "totalChunks", len(chks))
 	}
