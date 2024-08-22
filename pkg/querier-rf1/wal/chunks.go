@@ -288,6 +288,9 @@ func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 }
 
 func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "downloadChunks")
+	sp.LogKV("batchSize", len(chks))
+	defer sp.Finish()
 	data := make([][]byte, len(chks))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(64)
