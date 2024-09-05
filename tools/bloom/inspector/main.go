@@ -9,13 +9,13 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	if len(os.Args) < 2 || os.Args[1] == "-h" {
 		fmt.Println("Usage: go run main.go BLOCK_DIRECTORY")
 		os.Exit(2)
 	}
 
 	path := os.Args[1]
-	fmt.Printf("Block directory: %s\n", path)
+	fmt.Printf("Block:    %s\n", path)
 
 	r := v1.NewDirectoryBlockReader(path)
 	b := v1.NewBlock(r, v1.NewMetrics(nil))
@@ -26,11 +26,13 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("Metadata: %+v\n", md)
+	fmt.Printf("Checksum: 0x%x\n", md.Checksum)
+	fmt.Printf("Series:   %+v\n", md.Series)
+	fmt.Printf("Options:  %+v\n", md.Options)
 
 	for q.Next() {
 		swb := q.At()
-		fmt.Printf("%s (%d)\n", swb.Series.Fingerprint, swb.Series.Chunks.Len())
+		fmt.Printf("%s (%+v) %v\n", swb.Series.Fingerprint, swb.Series.Chunks, swb.Meta.Fields.Items())
 	}
 	if q.Err() != nil {
 		fmt.Printf("error: %s\n", q.Err())
