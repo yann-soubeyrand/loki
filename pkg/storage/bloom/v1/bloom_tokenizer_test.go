@@ -97,15 +97,19 @@ func TestSetLineTokenizer(t *testing.T) {
 
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
-	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
-
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
+
+	metadata := push.LabelsAdapter{
+		{Name: "trace_id", Value: "46085a695cd78bd8"},
+		{Name: "customer_id", Value: "customer"},
+	}
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      testLine,
+		Timestamp:          time.Unix(0, 1),
+		Line:               "log line",
+		StructuredMetadata: metadata,
 	})
 	itr, err := memChunk.Iterator(
 		context.Background(),
@@ -120,20 +124,22 @@ func TestTokenizerPopulate(t *testing.T) {
 		ScalableBloomFilter: *sbf,
 	}
 
+	chk := ChunkRef{}
 	blooms, err := populateAndConsumeBloom(
 		bt,
 		v2.NewSliceIter([]*Bloom{&bloom}),
-		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
-			Itr: itr}}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: chk, Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
 
-	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	toks := tokenizer.Tokens(testLine)
-	for toks.Next() {
-		token := toks.At()
-		require.True(t, blooms[0].Test(token))
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(chk)))
+	for _, kv := range metadata {
+		tokens := tokenizer.Tokens(kv)
+		for tokens.Next() {
+			token := tokens.At()
+			require.True(t, blooms[0].Test([]byte(token)))
+		}
 	}
 }
 
