@@ -54,10 +54,17 @@ type SeriesWithLiteralBlooms struct {
 }
 
 func (s *SeriesWithLiteralBlooms) SeriesWithBlooms() SeriesWithBlooms {
+	offsets := make([]BloomOffset, 0, len(s.Blooms))
+	for i := range s.Blooms {
+		offsets = append(offsets, BloomOffset{Page: i, ByteOffset: 0})
+	}
 	return SeriesWithBlooms{
 		Series: &SeriesWithMeta{
 			Series: *s.Series,
-			Meta:   Meta{},
+			Meta: Meta{
+				Offsets: offsets,
+				Fields:  NewSetFromLiteral[Field]("__all__"),
+			},
 		},
 		Blooms: iter.NewSliceIter[*Bloom](s.Blooms),
 	}

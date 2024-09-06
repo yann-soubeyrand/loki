@@ -170,7 +170,7 @@ func TestFuseMultiPage(t *testing.T) {
 		Through:  10,
 		Checksum: 0,
 	}
-	series := &Series{
+	series := Series{
 		Fingerprint: fp,
 		Chunks:      []ChunkRef{chk},
 	}
@@ -192,7 +192,9 @@ func TestFuseMultiPage(t *testing.T) {
 
 	_, err = builder.BuildFrom(v2.NewSliceIter([]SeriesWithBlooms{
 		{
-			series,
+			&SeriesWithMeta{
+				Series: series,
+			},
 			v2.NewSliceIter([]*Bloom{
 				b1, b2,
 			}),
@@ -269,7 +271,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	data := make([]SeriesWithBlooms, 0, numSeries)
 	tokenizer := NewNGramTokenizer(4, 0)
 	for i := 0; i < numSeries; i++ {
-		var series Series
+		var series SeriesWithMeta
 		series.Fingerprint = model.Fingerprint(i)
 		series.Chunks = []ChunkRef{
 			{
@@ -377,13 +379,15 @@ func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
 	require.Nil(t, err)
 
 	data := SeriesWithBlooms{
-		Series: &Series{
-			Fingerprint: 0,
-			Chunks: []ChunkRef{
-				{
-					From:     0,
-					Through:  10,
-					Checksum: 0x1234,
+		Series: &SeriesWithMeta{
+			Series: Series{
+				Fingerprint: 0,
+				Chunks: []ChunkRef{
+					{
+						From:     0,
+						Through:  10,
+						Checksum: 0x1234,
+					},
 				},
 			},
 		},
