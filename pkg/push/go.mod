@@ -1,11 +1,13 @@
 module github.com/grafana/loki/pkg/push
 
-go 1.19
+go 1.22.0
+
+toolchain go1.23.1
 
 require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	google.golang.org/grpc v1.56.3
 )
 
